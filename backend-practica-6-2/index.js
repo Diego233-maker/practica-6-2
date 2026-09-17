@@ -1,14 +1,28 @@
+import 'dotenv/config';
 import {ApolloServer} from '@apollo/server';
 import {startStandaloneServer} from '@apollo/server/standalone';
 import pkg from 'pg';
 const {Pool} = pkg;
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'bakinghub',
-  password: '270805',
-  port: 5432,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'bakinghub',
+  password: process.env.DB_PASSWORD || 'postgres',
+  port: Number(process.env.DB_PORT) || 5432,
 });
+
+// Verifica la conexión a la base de datos al arrancar, para dar un mensaje
+// claro en vez de que los primeros queries fallen sin explicación.
+try {
+  await pool.query('SELECT 1');
+  console.log('✅ Conexión a PostgreSQL exitosa');
+} catch (err) {
+  console.error('❌ No se pudo conectar a PostgreSQL:', err.message);
+  console.error(
+    '   Revisa que Postgres esté corriendo y que las variables en tu archivo .env sean correctas\n' +
+    '   (DB_USER, DB_PASSWORD, DB_NAME, DB_HOST, DB_PORT). Ver el README para más detalles.'
+  );
+}
 
 const TypeDefs = `#graphql
 type Producto {
@@ -80,6 +94,6 @@ const sever = new ApolloServer({
   resolvers: resolvers
 });
 const {url} = await startStandaloneServer(sever, {
-  listen: {port: 4000}
+  listen: {port: Number(process.env.PORT) || 4000}
 });
 console.log(`Servidor listo en ${url}`);
