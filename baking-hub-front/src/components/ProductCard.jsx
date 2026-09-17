@@ -1,5 +1,3 @@
-import React from 'react';
-
 function ProductCard({ nombre, precio, imagen, alHacerClic }) {
   return (
     <div className="tarjeta-producto">
