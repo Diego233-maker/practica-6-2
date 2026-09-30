@@ -1,0 +1,48 @@
+---
+interface Props {
+  label: string;
+  name: string;
+  type?: 'text' | 'email' | 'password';
+  autocomplete?: string;
+  value?: string;
+  minlength?: number;
+  required?: boolean;
+}
+
+const { label, name, type = 'text', autocomplete, value = '', minlength, required = true } = Astro.props;
+---
+
+<div class="campo">
+  <label for={name}>{label}</label>
+  <input id={name} {name} {type} {autocomplete} {value} {minlength} {required} />
+</div>
+
+<style>
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+  }
+
+  label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--espresso-soft);
+  }
+
+  input {
+    font: inherit;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--cream);
+    color: var(--espresso);
+  }
+
+  input:focus {
+    outline: 2px solid var(--honey);
+    outline-offset: 1px;
+    background: var(--surface);
+  }
+</style>

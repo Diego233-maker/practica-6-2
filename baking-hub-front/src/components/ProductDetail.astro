@@ -1,0 +1,62 @@
+---
+import AddToCartButton from './AddToCartButton';
+import { precio } from '../lib/format';
+import type { Producto } from '../types';
+
+interface Props {
+  producto: Producto;
+}
+
+const { producto } = Astro.props;
+---
+
+<div class="detalle-card">
+  <a class="volver-btn" href="/">← Volver al catálogo</a>
+  <h2>{producto.nombre}</h2>
+  <img src={producto.imagen} alt={producto.nombre} />
+  <p class="detalle-precio">Precio: {precio(producto.precio)}</p>
+  <AddToCartButton client:only="react" producto={producto}>
+    <button slot="fallback" class="btn-primario" disabled>Añadir al carrito</button>
+  </AddToCartButton>
+</div>
+
+<style>
+  .detalle-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    max-width: 460px;
+  }
+
+  .volver-btn {
+    display: inline-block;
+    color: var(--espresso-soft);
+    font-weight: 500;
+    padding: 0.4rem 0;
+    margin-bottom: 1rem;
+    text-decoration: none;
+  }
+
+  .volver-btn:hover { color: var(--espresso); }
+
+  h2 {
+    font-style: italic;
+    color: var(--honey-dark);
+    font-size: 1.8rem;
+  }
+
+  img {
+    width: 100%;
+    max-height: 260px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 1.1rem 0;
+  }
+
+  .detalle-precio {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0 0 1.1rem;
+  }
+</style>

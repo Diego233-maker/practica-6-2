@@ -1,0 +1,9 @@
+---
+import Layout from '../layouts/Layout.astro';
+Astro.response.status = 404;
+---
+
+<Layout titulo="No encontrado" sidebar>
+  <h2 class="section-title">No encontramos lo que buscabas</h2>
+  <p class="estado-vacio">La página o el producto no existe. <a href="/">Volver al catálogo</a></p>
+</Layout>

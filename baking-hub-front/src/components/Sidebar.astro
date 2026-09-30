@@ -1,0 +1,90 @@
+---
+import { CATEGORIAS } from '../lib/categorias';
+
+interface Props {
+  activa?: string;
+}
+
+const { activa } = Astro.props;
+const href = (categoria: string) => (categoria === 'Todas' ? '/' : `/?categoria=${encodeURIComponent(categoria)}`);
+---
+
+<aside class="side-bar">
+  <h3>Categorías</h3>
+  <ul class="category-list">
+    {
+      CATEGORIAS.map((categoria) => (
+        <li>
+          <a
+            class:list={['category-item', { activa: activa === categoria }]}
+            href={href(categoria)}
+            aria-current={activa === categoria ? 'page' : undefined}
+          >
+            {categoria === 'Todas' ? 'Ver todo' : categoria}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</aside>
+
+<style>
+  .side-bar {
+    width: 220px;
+    flex-shrink: 0;
+    padding: 1.75rem 1.25rem;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .side-bar h3 {
+    font-size: 0.95rem;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--espresso-soft);
+    margin-bottom: 0.9rem;
+  }
+
+  .category-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .category-item {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    color: var(--espresso-soft);
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .category-item:hover { background: var(--cream); }
+
+  .category-item.activa {
+    background: var(--honey);
+    color: var(--espresso);
+    font-weight: 600;
+  }
+
+  @media (max-width: 768px) {
+    .side-bar {
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      padding: 1rem 1.25rem;
+    }
+
+    .category-list {
+      flex-direction: row;
+      overflow-x: auto;
+      gap: 0.5rem;
+    }
+
+    .category-item { white-space: nowrap; }
+  }
+</style>

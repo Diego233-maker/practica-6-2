@@ -1,0 +1,81 @@
+---
+import { precio } from '../lib/format';
+import type { Pedido } from '../types';
+
+interface Props {
+  pedido: Pedido;
+  destacado?: boolean;
+}
+
+const { pedido, destacado = false } = Astro.props;
+const fecha = new Date(pedido.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+---
+
+<article class:list={['pedido', { destacado }]}>
+  <header>
+    <h3>Pedido #{pedido.id}</h3>
+    <span class="estado">{pedido.status}</span>
+  </header>
+  <p class="fecha">{fecha}</p>
+  <ul>
+    {
+      pedido.productos.map((p) => (
+        <li>
+          <span>{p.cantidad} × {p.nombre}</span>
+          <span>{precio(p.precio * p.cantidad)}</span>
+        </li>
+      ))
+    }
+  </ul>
+  <p class="total">Total: <strong>{precio(pedido.total)}</strong></p>
+</article>
+
+<style>
+  .pedido {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    max-width: 560px;
+  }
+
+  .pedido.destacado { border-color: var(--honey); }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+  }
+
+  h3 { font-size: 1.1rem; }
+
+  .estado {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: capitalize;
+    color: var(--honey-dark);
+  }
+
+  .fecha {
+    margin: 0.2rem 0 0.8rem;
+    color: var(--espresso-soft);
+    font-size: 0.9rem;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .total { margin: 0.8rem 0 0; text-align: right; }
+</style>

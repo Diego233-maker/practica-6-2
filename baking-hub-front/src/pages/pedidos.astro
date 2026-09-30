@@ -1,0 +1,55 @@
+---
+// Esta ruta está protegida por src/middleware.ts: solo entran usuarios con sesión.
+import Layout from '../layouts/Layout.astro';
+import PedidoCard from '../components/PedidoCard.astro';
+import Alert from '../components/Alert.astro';
+import { graphql, ApiError } from '../lib/graphql';
+import { MIS_PEDIDOS } from '../lib/queries';
+import type { Pedido } from '../types';
+
+const nuevo = Astro.url.searchParams.get('nuevo');
+
+let pedidos: Pedido[] = [];
+let error: string | null = null;
+try {
+  ({ misPedidos: pedidos } = await graphql<{ misPedidos: Pedido[] }>(MIS_PEDIDOS, {}, Astro.locals.token));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
+---
+
+<Layout titulo="Mis pedidos" sidebar>
+  <h2 class="section-title">Mis pedidos</h2>
+
+  {nuevo && !error && <p class="exito" role="status">¡Pedido creado con éxito! Tu número de pedido es #{nuevo}.</p>}
+  {error && <Alert>{error}</Alert>}
+
+  {
+    !error && pedidos.length === 0 && (
+      <p class="estado-vacio">
+        Todavía no tienes pedidos. <a href="/">Ver el catálogo</a>
+      </p>
+    )
+  }
+
+  <div class="lista">
+    {pedidos.map((p) => <PedidoCard pedido={p} destacado={p.id === nuevo} />)}
+  </div>
+</Layout>
+
+<style>
+  .lista {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .exito {
+    background: #eef6ea;
+    border: 1px solid #c9dfbf;
+    color: #2f5a22;
+    padding: 0.9rem 1rem;
+    border-radius: 8px;
+    max-width: 560px;
+  }
+</style>

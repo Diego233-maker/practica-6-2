@@ -1,0 +1,109 @@
+/* ============ Tokens ============ */
+:root {
+  --cream: #fbf5ea;
+  --surface: #ffffff;
+  --espresso: #3a2a1f;
+  --espresso-soft: #7c6a5b;
+  --honey: #d98e2b;
+  --honey-dark: #b5731a;
+  --jam: #8c3b3b;
+  --line: #e8dcc8;
+  --radius: 10px;
+  --shadow-soft: 0 6px 16px -8px rgba(58, 42, 31, 0.25);
+}
+
+/* ============ Base ============ */
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--espresso);
+  background: var(--cream);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3 {
+  font-family: 'Fraunces', serif;
+  color: var(--espresso);
+  margin: 0;
+}
+
+button {
+  font-family: 'Inter', system-ui, sans-serif;
+  border: none;
+  cursor: pointer;
+}
+
+a { color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--honey-dark);
+  outline-offset: 2px;
+}
+
+/* ============ Piezas compartidas (usadas por páginas Astro y por islas React) ============ */
+.section-title {
+  font-size: 1.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.estado-vacio {
+  color: var(--espresso-soft);
+  padding: 2rem 0;
+}
+
+.btn-primario {
+  display: block;
+  background: var(--honey);
+  color: var(--espresso);
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.85rem;
+  border-radius: 8px;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.btn-primario:hover:not(:disabled) {
+  background: var(--honey-dark);
+  color: var(--cream);
+}
+
+.btn-primario:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Botón del carrito en el header (lo pinta una isla React y su fallback en Astro) */
+.cart-button {
+  display: inline-block;
+  background: var(--honey);
+  color: var(--espresso);
+  font-weight: 600;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.cart-button:hover {
+  background: var(--honey-dark);
+  color: var(--cream);
+}
+
+/* Mensajes de error (componente Alert e isla de checkout) */
+.mensaje-error {
+  color: var(--jam);
+  background: #fbeeea;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #eccbc0;
+  margin: 0 0 1rem;
+}

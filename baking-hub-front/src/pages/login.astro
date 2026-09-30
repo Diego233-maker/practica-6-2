@@ -1,0 +1,44 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthCard from '../components/AuthCard.astro';
+import FormField from '../components/FormField.astro';
+import Alert from '../components/Alert.astro';
+import { graphql, ApiError } from '../lib/graphql';
+import { LOGIN } from '../lib/queries';
+import { guardarSesion, rutaSegura } from '../lib/auth';
+
+const next = rutaSegura(Astro.url.searchParams.get('next'));
+if (Astro.locals.usuario) return Astro.redirect(next);
+
+let error: string | null = null;
+let email = '';
+
+if (Astro.request.method === 'POST') {
+  const datos = await Astro.request.formData();
+  email = String(datos.get('email') ?? '').trim();
+  const password = String(datos.get('password') ?? '');
+
+  try {
+    const { login } = await graphql<{ login: { token: string } }>(LOGIN, { email, password });
+    guardarSesion(Astro.cookies, login.token);
+    return Astro.redirect(next, 303);
+  } catch (e) {
+    const esDeUsuario = e instanceof ApiError && ['UNAUTHENTICATED', 'BAD_USER_INPUT'].includes(e.codigo);
+    error = esDeUsuario ? e.message : 'No pudimos iniciar sesión. Inténtalo de nuevo en un momento.';
+  }
+}
+---
+
+<Layout titulo="Ingresar">
+  <AuthCard titulo="Ingresar" subtitulo="Entra para confirmar tus pedidos y revisar tu historial.">
+    {error && <Alert>{error}</Alert>}
+    <form method="POST">
+      <FormField label="Correo" name="email" type="email" autocomplete="email" value={email} />
+      <FormField label="Contraseña" name="password" type="password" autocomplete="current-password" />
+      <button class="btn-primario" type="submit">Ingresar</button>
+    </form>
+    <Fragment slot="pie">
+      ¿No tienes cuenta? <a href={`/registro${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`}>Crear cuenta</a>
+    </Fragment>
+  </AuthCard>
+</Layout>

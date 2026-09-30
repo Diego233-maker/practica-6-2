@@ -1,0 +1,11 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CartView from '../components/CartView';
+---
+
+<Layout titulo="Carrito" sidebar>
+  <h2 class="section-title">Tu carrito de compras</h2>
+  <CartView client:only="react">
+    <p slot="fallback" class="estado-vacio">Cargando tu carrito…</p>
+  </CartView>
+</Layout>

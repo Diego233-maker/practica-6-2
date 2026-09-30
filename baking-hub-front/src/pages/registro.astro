@@ -1,0 +1,55 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthCard from '../components/AuthCard.astro';
+import FormField from '../components/FormField.astro';
+import Alert from '../components/Alert.astro';
+import { graphql, ApiError } from '../lib/graphql';
+import { REGISTRAR } from '../lib/queries';
+import { guardarSesion, rutaSegura } from '../lib/auth';
+
+const next = rutaSegura(Astro.url.searchParams.get('next'));
+if (Astro.locals.usuario) return Astro.redirect(next);
+
+let error: string | null = null;
+let nombre = '';
+let email = '';
+
+if (Astro.request.method === 'POST') {
+  const datos = await Astro.request.formData();
+  nombre = String(datos.get('nombre') ?? '').trim();
+  email = String(datos.get('email') ?? '').trim();
+  const password = String(datos.get('password') ?? '');
+  const confirmar = String(datos.get('confirmar') ?? '');
+
+  if (password !== confirmar) {
+    error = 'Las contraseñas no coinciden.';
+  } else {
+    try {
+      const { registrar } = await graphql<{ registrar: { token: string } }>(REGISTRAR, { nombre, email, password });
+      guardarSesion(Astro.cookies, registrar.token);
+      return Astro.redirect(next, 303);
+    } catch (e) {
+      error =
+        e instanceof ApiError && e.codigo === 'BAD_USER_INPUT'
+          ? e.message
+          : 'No pudimos crear tu cuenta. Inténtalo de nuevo en un momento.';
+    }
+  }
+}
+---
+
+<Layout titulo="Crear cuenta">
+  <AuthCard titulo="Crear cuenta" subtitulo="Con tu cuenta puedes pagar y ver tus pedidos anteriores.">
+    {error && <Alert>{error}</Alert>}
+    <form method="POST">
+      <FormField label="Nombre" name="nombre" autocomplete="name" value={nombre} minlength={2} />
+      <FormField label="Correo" name="email" type="email" autocomplete="email" value={email} />
+      <FormField label="Contraseña (mínimo 8 caracteres)" name="password" type="password" autocomplete="new-password" minlength={8} />
+      <FormField label="Repite la contraseña" name="confirmar" type="password" autocomplete="new-password" minlength={8} />
+      <button class="btn-primario" type="submit">Crear cuenta</button>
+    </form>
+    <Fragment slot="pie">
+      ¿Ya tienes cuenta? <a href={`/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`}>Ingresar</a>
+    </Fragment>
+  </AuthCard>
+</Layout>

@@ -1,0 +1,112 @@
+/* Estilos de las islas del carrito y del checkout (React no tiene <style> con scope de Astro). */
+
+.carrito-lista {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  max-width: 560px;
+}
+
+.carrito-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.05rem;
+}
+
+.carrito-cantidad {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.carrito-cantidad button {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  color: var(--espresso);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.carrito-cantidad button:hover {
+  background: var(--honey);
+}
+
+.quitar-btn {
+  background: none;
+  color: var(--jam);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.carrito-total {
+  font-size: 1.15rem;
+  margin: 0 0 1.25rem;
+}
+
+.checkout-btn {
+  display: inline-block;
+  background: var(--espresso);
+  color: var(--cream);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.checkout-btn:hover {
+  background: var(--honey-dark);
+}
+
+.checkout-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  max-width: 400px;
+}
+
+.checkout-card p {
+  color: var(--espresso-soft);
+  margin: 0 0 1.25rem;
+}
+
+.pagar-btn {
+  font-weight: 600;
+  padding: 0.9rem;
+  border-radius: 8px;
+  width: 100%;
+  color: var(--cream);
+}
+
+.pagar-btn.activo { background: var(--honey-dark); }
+
+.pagar-btn.procesando {
+  background: var(--espresso-soft);
+  cursor: not-allowed;
+}
+
+.cancelar-btn {
+  display: block;
+  margin-top: 0.75rem;
+  width: 100%;
+  padding: 0.7rem;
+  text-align: center;
+  text-decoration: none;
+  color: var(--espresso-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.cancelar-btn:hover { background: var(--cream); }
+
+@media (max-width: 520px) {
+  .carrito-item { grid-template-columns: 1fr auto; }
+}

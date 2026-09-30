@@ -1,0 +1,51 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Hero from '../components/Hero.astro';
+import ProductCard from '../components/ProductCard.astro';
+import WhyUs from '../components/WhyUs.astro';
+import Alert from '../components/Alert.astro';
+import { graphql, ApiError } from '../lib/graphql';
+import { OBTENER_MENU } from '../lib/queries';
+import { CATEGORIAS, obtenerCategoria } from '../lib/categorias';
+import type { Producto } from '../types';
+
+const categoria = CATEGORIAS.find((c) => c === Astro.url.searchParams.get('categoria')) ?? 'Todas';
+
+let productos: Producto[] = [];
+let error: string | null = null;
+try {
+  ({ productos } = await graphql<{ productos: Producto[] }>(OBTENER_MENU));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
+
+const filtrados =
+  categoria === 'Todas' ? productos : productos.filter((p) => obtenerCategoria(p.nombre) === categoria);
+---
+
+<Layout sidebar categoriaActiva={categoria}>
+  {categoria === 'Todas' && <Hero />}
+
+  <h2 class="section-title">Catálogo: {categoria}</h2>
+
+  {error && <Alert>Error de conexión: {error}</Alert>}
+
+  {
+    !error && (
+      <div class="product-grid">
+        {filtrados.length === 0 && <p class="estado-vacio">No hay productos en esta categoría.</p>}
+        {filtrados.map((p) => <ProductCard {...p} />)}
+      </div>
+    )
+  }
+
+  {categoria === 'Todas' && !error && <WhyUs />}
+</Layout>
+
+<style>
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 1.25rem;
+  }
+</style>

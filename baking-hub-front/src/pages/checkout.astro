@@ -1,0 +1,12 @@
+---
+// Esta ruta está protegida por src/middleware.ts: solo entran usuarios con sesión.
+import Layout from '../layouts/Layout.astro';
+import CheckoutView from '../components/CheckoutView';
+---
+
+<Layout titulo="Checkout" sidebar>
+  <h2 class="section-title">Resumen de orden</h2>
+  <CheckoutView client:only="react">
+    <p slot="fallback" class="estado-vacio">Cargando tu orden…</p>
+  </CheckoutView>
+</Layout>

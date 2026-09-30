@@ -1,0 +1,26 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ProductDetail from '../../components/ProductDetail.astro';
+import Alert from '../../components/Alert.astro';
+import { graphql, ApiError } from '../../lib/graphql';
+import { OBTENER_PRODUCTO } from '../../lib/queries';
+import type { Producto } from '../../types';
+
+const { id } = Astro.params;
+if (!id || !/^\d+$/.test(id)) return Astro.rewrite('/404');
+
+let producto: Producto | null = null;
+let error: string | null = null;
+try {
+  ({ producto } = await graphql<{ producto: Producto | null }>(OBTENER_PRODUCTO, { id }));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
+
+if (!producto && !error) return Astro.rewrite('/404');
+---
+
+<Layout titulo={producto?.nombre} sidebar>
+  {error && <Alert>Error de conexión: {error}</Alert>}
+  {producto && <ProductDetail producto={producto} />}
+</Layout>

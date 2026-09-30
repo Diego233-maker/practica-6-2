@@ -1,0 +1,73 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Sidebar from '../components/Sidebar.astro';
+
+interface Props {
+  titulo?: string;
+  /** Muestra la barra lateral de categorías (páginas de tienda). */
+  sidebar?: boolean;
+  categoriaActiva?: string;
+}
+
+const { titulo, sidebar = false, categoriaActiva } = Astro.props;
+const title = titulo ? `${titulo} · Baking Hub` : 'Baking Hub';
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="layout-principal">
+      <Header />
+      <div class="contenedor-central">
+        {sidebar && <Sidebar activa={categoriaActiva} />}
+        <main class:list={['main-content', { 'sin-sidebar': !sidebar }]}>
+          <slot />
+        </main>
+      </div>
+      <Footer />
+    </div>
+  </body>
+</html>
+
+<style>
+  .layout-principal {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .contenedor-central {
+    display: flex;
+    flex: 1;
+  }
+
+  .main-content {
+    flex: 1;
+    padding: 2rem 2.5rem;
+    max-width: 1100px;
+  }
+
+  .main-content.sin-sidebar {
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  @media (max-width: 768px) {
+    .contenedor-central { flex-direction: column; }
+    .main-content { padding: 1.5rem 1.25rem; }
+  }
+</style>

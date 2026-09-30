@@ -1,0 +1,90 @@
+---
+import CartButton from './CartButton';
+
+const { usuario } = Astro.locals;
+const primerNombre = usuario?.nombre.split(' ')[0];
+---
+
+<header class="top-bar">
+  <a class="brand" href="/">Baking Hub</a>
+
+  <nav class="acciones" aria-label="Cuenta y carrito">
+    {
+      usuario ? (
+        <>
+          <a class="enlace" href="/pedidos">Mis pedidos</a>
+          <span class="saludo">Hola, {primerNombre}</span>
+          <form method="POST" action="/api/auth/logout">
+            <button class="enlace enlace-btn" type="submit">Salir</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <a class="enlace" href="/login">Ingresar</a>
+          <a class="enlace" href="/registro">Crear cuenta</a>
+        </>
+      )
+    }
+    <CartButton client:only="react">
+      <a slot="fallback" class="cart-button" href="/carrito">Carrito</a>
+    </CartButton>
+  </nav>
+</header>
+
+<style>
+  .top-bar {
+    background: var(--espresso);
+    color: var(--cream);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .brand {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 1.6rem;
+    color: var(--cream);
+    text-decoration: none;
+    letter-spacing: 0.2px;
+  }
+
+  .acciones {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .acciones form { margin: 0; }
+
+  .enlace {
+    color: var(--line);
+    text-decoration: none;
+    font-size: 0.95rem;
+  }
+
+  .enlace:hover { color: var(--honey); }
+
+  .enlace-btn {
+    background: none;
+    padding: 0;
+    font-size: 0.95rem;
+  }
+
+  .saludo {
+    color: var(--cream);
+    font-size: 0.95rem;
+  }
+
+  @media (max-width: 768px) {
+    .top-bar { padding: 0.9rem 1.25rem; }
+  }
+</style>
