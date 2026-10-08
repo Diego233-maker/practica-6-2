@@ -1,0 +1,998 @@
+diff --git a/README-EJECUTAR.md b/README-EJECUTAR.md
+index 69856e0..6e7e390 100644
+--- a/README-EJECUTAR.md
++++ b/README-EJECUTAR.md
+@@ -28,11 +28,12 @@ distintas:
+ - **Modo simulado** (`MP_MODO=simulado`, el valor por defecto): todas las pantallas funcionan **sin** llamar a
+   Mercado Pago. En tarjeta, un número que termine en `0002` se rechaza; en OXXO/SPEI el botón
+   "Simular pago recibido" marca el pedido como pagado.
+-- **Integrar la API real**: solo hay que completar los `TODO(MERCADO PAGO)` en
+-  `backend-practica-6-2/pagos.js` (`crearCobroMercadoPago`, `consultarPagoMercadoPago`) y
+-  `baking-hub-front/src/lib/mercadopago-cliente.ts` (`tokenizarConMercadoPago`), llenar `MP_ACCESS_TOKEN`,
+-  `MP_WEBHOOK_SECRET`, `BACKEND_PUBLIC_URL` y `PUBLIC_MP_PUBLIC_KEY`, y cambiar a `MP_MODO=real`.
+-  El webhook ya existe en `POST /webhooks/mercadopago` (valida la firma y consulta el estado real del pago).
++- **Cobrar de verdad (incluye OXXO)**: la integración con Mercado Pago ya está hecha. Solo llena
++  `MP_ACCESS_TOKEN` (y, si quieres confirmación inmediata de pagos en OXXO/SPEI, `BACKEND_PUBLIC_URL` +
++  `MP_WEBHOOK_SECRET`) en `backend-practica-6-2/.env`, `PUBLIC_MP_PUBLIC_KEY` en `baking-hub-front/.env`, y cambia
++  `MP_MODO=real`. Sin webhook, el backend consulta a Mercado Pago cada 5 minutos por los pagos pendientes.
++  El webhook es `POST /webhooks/mercadopago` (valida la firma `x-signature` y consulta el estado real del pago).
++  Claves de prueba (`TEST-…`) y de producción (`APP_USR-…`) no se mezclan: usa el par del mismo entorno.
+ - **Panel admin** (`/admin`, solo rol `admin`): resumen, **inventario** (agregar productos, reabastecer,
+   editar, eliminar) y **clientes** (buscar, editar, suspender/reactivar, eliminar). Para ser admin, pon tu
+   correo en `ADMIN_EMAIL` del `.env` del backend y regístrate con él.
+diff --git a/backend-practica-6-2/.env.example b/backend-practica-6-2/.env.example
+index 3f8c8ed..74a8f88 100644
+--- a/backend-practica-6-2/.env.example
++++ b/backend-practica-6-2/.env.example
+@@ -15,10 +15,11 @@ JWT_SECRET=
+ ADMIN_EMAIL=
+ 
+ # ---------------------------------------------------------------------------------------
+-# Pagos con Mercado Pago
++# Pagos con Mercado Pago (tarjeta, OXXO, SPEI y billetera). La integración ya está hecha en pagos.js.
+ # ---------------------------------------------------------------------------------------
+ # simulado = NO llama a Mercado Pago (sirve para probar todas las pantallas del checkout).
+-# real     = usa tu cuenta de Mercado Pago (primero completa las funciones TODO en pagos.js).
++# real     = cobra con tu cuenta de Mercado Pago (rellena las 3-4 variables de abajo).
++# Con NODE_ENV=production el modo simulado se rechaza (cualquiera podría "simular" que pagó).
+ MP_MODO=simulado
+ 
+ # Métodos que aparecen en el checkout (quita los que no quieras): tarjeta, oxxo, spei, mercadopago
+@@ -27,10 +28,16 @@ MP_METODOS=tarjeta,oxxo,spei,mercadopago
+ # Horas que tiene el cliente para pagar en OXXO / SPEI antes de que el pedido expire y se libere el stock
+ PEDIDO_EXPIRA_HORAS=72
+ 
++# Máximo de pedidos pendientes de pago por cliente a la vez (evita que alguien aparte todo el inventario)
++MAX_PEDIDOS_PENDIENTES=5
++
+ # Solo para MP_MODO=real:
++# Access Token PRIVADO (Tus integraciones -> Credenciales). TEST-... para pruebas, APP_USR-... para producción. Nunca lo subas a git.
+ MP_ACCESS_TOKEN=
++# Clave secreta del webhook (Tus integraciones -> Webhooks -> Configurar notificaciones). Obligatoria si pones BACKEND_PUBLIC_URL.
+ MP_WEBHOOK_SECRET=
+-# URL pública de este backend para los avisos (webhook). En desarrollo usa ngrok o cloudflared, p. ej. https://abc123.ngrok.app
++# URL pública https de este backend para los avisos (webhook). En desarrollo usa ngrok o cloudflared, p. ej. https://abc123.ngrok.app
++# Opcional: si la dejas vacía, los pagos se confirman igual por consulta periódica a Mercado Pago (cada 5 min).
+ BACKEND_PUBLIC_URL=
+ # URL del frontend (a donde Mercado Pago regresa al cliente)
+ FRONTEND_URL=http://localhost:4321
+diff --git a/backend-practica-6-2/index.js b/backend-practica-6-2/index.js
+index 5d0c7d7..56241f4 100644
+--- a/backend-practica-6-2/index.js
++++ b/backend-practica-6-2/index.js
+@@ -19,8 +19,10 @@ import {
+   HORAS_PARA_PAGAR,
+   METODOS_ACTIVOS,
+   MODO,
++  buscarPagosDePedido,
+   consultarPago,
+   crearCobro,
++  idDeNotificacion,
+   verificarFirmaWebhook,
+ } from './pagos.js';
+ 
+@@ -202,6 +204,35 @@ const requiereAdmin = (ctx) => {
+ const USUARIO_PUBLICO = 'id, nombre, email, rol';
+ const STOCK_BAJO = 5;
+ 
++// Un pedido pendiente de OXXO/SPEI aparta piezas hasta 72 h: se limita cuántos puede tener un cliente a la vez.
++const MAX_PEDIDOS_PENDIENTES = Number(process.env.MAX_PEDIDOS_PENDIENTES) || 5;
++
++/* Freno a la fuerza bruta del login: máximo de fallos por correo en una ventana de tiempo.
++ * (Las peticiones llegan desde el servidor de Astro, así que limitar por IP aquí no serviría.) */
++const MAX_FALLOS_LOGIN = 8;
++const VENTANA_LOGIN_MS = 15 * 60 * 1000;
++const fallosLogin = new Map(); // email -> { cuenta, desde }
++
++function loginBloqueado(email) {
++  const f = fallosLogin.get(email);
++  if (!f) return false;
++  if (Date.now() - f.desde > VENTANA_LOGIN_MS) {
++    fallosLogin.delete(email);
++    return false;
++  }
++  return f.cuenta >= MAX_FALLOS_LOGIN;
++}
++
++function registrarFalloLogin(email) {
++  const ahora = Date.now();
++  if (fallosLogin.size > 5000) {
++    for (const [clave, f] of fallosLogin) if (ahora - f.desde > VENTANA_LOGIN_MS) fallosLogin.delete(clave);
++  }
++  const f = fallosLogin.get(email);
++  if (!f || ahora - f.desde > VENTANA_LOGIN_MS) fallosLogin.set(email, { cuenta: 1, desde: ahora });
++  else f.cuenta += 1;
++}
++
+ /** Convierte un id de GraphQL en entero o lanza un error claro. */
+ function idEntero(id) {
+   const n = Number(id);
+@@ -262,10 +293,27 @@ async function aplicarEstadoPago(pedidoId, estado, pagoId = null) {
+           WHERE id = $1 AND status = 'pendiente'`,
+         [pedidoId, pagoId]
+       );
+-      if (res.rowCount === 0) console.warn(`Pago recibido para el pedido ${pedidoId}, pero ya no estaba pendiente. Revísalo a mano.`);
++      if (res.rowCount === 0) {
++        const actual = await pool.query('SELECT status FROM pedidos WHERE id = $1', [pedidoId]);
++        const status = actual.rows[0]?.status;
++        // Un pedido ya pagado que vuelve a avisar (reintento del webhook) es normal; lo demás necesita atención.
++        if (status !== 'pagado') {
++          console.error(
++            `⚠️ Mercado Pago cobró el pago ${pagoId ?? '?'} del pedido ${pedidoId}, pero el pedido está "${status ?? 'inexistente'}" ` +
++              '(sus piezas ya se liberaron). Reembolsa el pago desde tu cuenta de Mercado Pago o reactiva el pedido a mano.'
++          );
++        }
++      }
++      return;
++    }
++    case 'rechazado': {
++      // En la billetera (Checkout Pro) el cliente puede reintentar con otra tarjeta dentro de la misma
++      // preferencia: un intento rechazado NO cancela el pedido; lo cancela la expiración de la preferencia.
++      const fila = await pool.query('SELECT metodo_pago FROM pedidos WHERE id = $1', [pedidoId]);
++      if (fila.rows[0]?.metodo_pago === 'mercadopago') return;
++      await cancelarPedido(pedidoId, 'cancelado');
+       return;
+     }
+-    case 'rechazado':
+     case 'cancelado':
+       await cancelarPedido(pedidoId, 'cancelado');
+       return;
+@@ -280,6 +328,65 @@ async function aplicarEstadoPago(pedidoId, estado, pagoId = null) {
+   }
+ }
+ 
++/**
++ * Aplica un pago ya consultado a Mercado Pago (lo usan el webhook y la conciliación periódica).
++ * Antes de tocar el pedido comprueba que el monto cobrado coincida con el total del pedido.
++ */
++async function procesarPagoMercadoPago(pago) {
++  let pedidoId = pago.pedidoId;
++  if (!pedidoId) {
++    const fila = await pool.query('SELECT id FROM pedidos WHERE pago_id = $1', [pago.pagoId]);
++    pedidoId = fila.rows[0]?.id ?? null;
++  }
++  if (!pedidoId) {
++    console.warn(`El pago ${pago.pagoId} no corresponde a ningún pedido`);
++    return false;
++  }
++  const pedido = await pool.query('SELECT total FROM pedidos WHERE id = $1', [pedidoId]);
++  if (!pedido.rows[0]) {
++    console.warn(`El pago ${pago.pagoId} apunta al pedido ${pedidoId}, que no existe`);
++    return false;
++  }
++  if ((pago.moneda && pago.moneda !== 'MXN') || !Number.isFinite(pago.monto) || Math.abs(pago.monto - Number(pedido.rows[0].total)) > 0.009) {
++    console.error(
++      `⚠️ El pago ${pago.pagoId} es de ${pago.monto} ${pago.moneda ?? ''} y el pedido ${pedidoId} vale ${pedido.rows[0].total} MXN: se ignora.`
++    );
++    return false;
++  }
++  await aplicarEstadoPago(pedidoId, pago.estado, pago.pagoId);
++  return true;
++}
++
++/**
++ * Respaldo del webhook: pregunta a Mercado Pago por los pedidos que siguen pendientes. Así los pagos de
++ * OXXO/SPEI se confirman aunque el webhook no esté configurado (por ejemplo en desarrollo, sin ngrok) o se pierda un aviso.
++ */
++async function conciliarPagosPendientes() {
++  if (MODO !== 'real') return;
++  const res = await pool.query(
++    `SELECT id, pago_id FROM pedidos
++      WHERE status = 'pendiente' AND fecha > NOW() - INTERVAL '10 days'
++        AND (pago_id IS NOT NULL OR metodo_pago = 'mercadopago')
++      ORDER BY id LIMIT 100`
++  );
++  let revisados = 0;
++  for (const p of res.rows) {
++    try {
++      if (p.pago_id) {
++        await procesarPagoMercadoPago(await consultarPago(p.pago_id));
++      } else {
++        // Billetera: el id del pago aún no se conocía; se busca por external_reference (= id del pedido).
++        const aprobado = (await buscarPagosDePedido(p.id)).find((x) => x.estado === 'pagado');
++        if (aprobado) await procesarPagoMercadoPago(aprobado);
++      }
++      revisados += 1;
++    } catch (error) {
++      console.error(`Conciliación del pedido ${p.id}:`, error.message);
++    }
++  }
++  if (revisados > 0) console.log(`Conciliación: ${revisados} pedido(s) pendiente(s) revisados en Mercado Pago`);
++}
++
+ /** Respaldo local: libera el stock de pedidos de OXXO/SPEI que nadie pagó (1 h de gracia sobre la fecha límite). */
+ async function expirarPedidosVencidos() {
+   const res = await pool.query(
+@@ -413,12 +520,18 @@ const resolvers = {
+     },
+ 
+     login: async (_, { email, password }) => {
+-      const res = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
++      email = email.trim().toLowerCase().slice(0, 254);
++      if (loginBloqueado(email)) throw errorNoAutenticado('Demasiados intentos fallidos. Inténtalo de nuevo en unos minutos.');
++      const res = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+       const fila = res.rows[0];
+       const passwordOk = await verificarPassword(password, fila?.password_hash);
+-      if (!fila || !passwordOk) throw errorNoAutenticado('Correo o contraseña incorrectos');
++      if (!fila || !passwordOk) {
++        registrarFalloLogin(email);
++        throw errorNoAutenticado('Correo o contraseña incorrectos');
++      }
+       // Se revisa después de la contraseña para no revelar a desconocidos qué correos existen.
+       if (!fila.activo) throw errorNoAutenticado('Tu cuenta está suspendida. Contacta a la tienda para reactivarla.');
++      fallosLogin.delete(email);
+       const { password_hash, ...usuario } = fila;
+       return { token: firmarToken(usuario), usuario };
+     },
+@@ -429,7 +542,9 @@ const resolvers = {
+ 
+       const metodo = metodoPago.trim().toLowerCase();
+       if (!METODOS_ACTIVOS.includes(metodo)) throw errorDeUsuario('Ese método de pago no está disponible');
+-      if (metodo === 'tarjeta' && !tarjeta?.token) throw errorDeUsuario('Falta la información de la tarjeta');
++      if (metodo === 'tarjeta' && (!tarjeta?.token || !tarjeta?.paymentMethodId)) {
++        throw errorDeUsuario('Falta la información de la tarjeta');
++      }
+ 
+       // Los ids repetidos cuentan como cantidad: ["1","1","3"] => 2 x producto 1, 1 x producto 3.
+       const cantidades = new Map();
+@@ -444,6 +559,10 @@ const resolvers = {
+       const client = await pool.connect();
+       try {
+         await client.query('BEGIN');
++        const pendientes = await client.query("SELECT COUNT(*)::int AS n FROM pedidos WHERE usuario_id = $1 AND status = 'pendiente'", [usuario.id]);
++        if (pendientes.rows[0].n >= MAX_PEDIDOS_PENDIENTES) {
++          throw errorDeUsuario('Tienes varios pedidos pendientes de pago. Paga alguno o espera a que expire antes de hacer otro.');
++        }
+         const encontrados = await client.query(
+           'SELECT id, nombre, precio, stock FROM productos WHERE id = ANY($1::int[]) AND activo ORDER BY id FOR UPDATE',
+           [[...cantidades.keys()]]
+@@ -493,11 +612,14 @@ const resolvers = {
+       }
+ 
+       // 3) Guardar el resultado del cobro (referencia de OXXO/SPEI, fecha límite, id del pago, etc.).
++      // El estado solo cambia si el pedido sigue pendiente: el webhook pudo llegar antes que esta respuesta
++      // (tarjeta aprobada al instante) y no hay que pisar su resultado.
+       const pagado = cobro.estado === 'pagado';
+       const actualizado = await pool.query(
+         `UPDATE pedidos
+-            SET status = $2::varchar, pago_id = $3, pago_referencia = $4, pago_url = $5, pago_expira = $6,
+-                pagado_en = CASE WHEN $2::varchar = 'pagado' THEN NOW() ELSE NULL END
++            SET status = CASE WHEN status = 'pendiente' THEN $2::varchar ELSE status END,
++                pago_id = $3, pago_referencia = $4, pago_url = $5, pago_expira = $6,
++                pagado_en = CASE WHEN status = 'pendiente' AND $2::varchar = 'pagado' THEN NOW() ELSE pagado_en END
+           WHERE id = $1 RETURNING *`,
+         [pedido.id, pagado ? 'pagado' : 'pendiente', cobro.pagoId, cobro.referencia, cobro.url, cobro.expira]
+       );
+@@ -634,20 +756,21 @@ app.post('/webhooks/mercadopago', express.json({ limit: '100kb' }), async (req,
+     if (!verificarFirmaWebhook(req)) return res.sendStatus(401);
+ 
+     const tipo = req.body?.type ?? req.query.type ?? req.query.topic;
+-    const pagoId = String(req.body?.data?.id ?? req.query['data.id'] ?? '');
++    const pagoId = idDeNotificacion(req); // el mismo id que se firmó
+     if (tipo !== 'payment' || !/^[\w-]{1,64}$/.test(pagoId)) return res.sendStatus(200);
+ 
+-    const pago = await consultarPago(pagoId);
+-    let pedidoId = pago.pedidoId;
+-    if (!pedidoId) {
+-      const fila = await pool.query('SELECT id FROM pedidos WHERE pago_id = $1', [pago.pagoId]);
+-      pedidoId = fila.rows[0]?.id ?? null;
+-    }
+-    if (!pedidoId) {
+-      console.warn(`Webhook: el pago ${pagoId} no corresponde a ningún pedido`);
+-      return res.sendStatus(200);
++    let pago;
++    try {
++      pago = await consultarPago(pagoId);
++    } catch (error) {
++      // El "simular notificación" del panel de Mercado Pago manda ids de prueba que no existen: no se reintentan.
++      if (error?.status === 404) {
++        console.warn(`Webhook: el pago ${pagoId} no existe en Mercado Pago (¿notificación de prueba?)`);
++        return res.sendStatus(200);
++      }
++      throw error;
+     }
+-    await aplicarEstadoPago(pedidoId, pago.estado, pago.pagoId);
++    await procesarPagoMercadoPago(pago);
+     return res.sendStatus(200);
+   } catch (error) {
+     console.error('Error en el webhook de Mercado Pago:', error);
+@@ -679,7 +802,24 @@ console.log(
+     : '💳 Pagos en modo REAL con Mercado Pago.'
+ );
+ 
+-// Libera el stock de pedidos de OXXO/SPEI vencidos: al arrancar y cada 10 minutos.
+-const revisarExpirados = () => expirarPedidosVencidos().catch((e) => console.error('Error al expirar pedidos:', e.message));
+-await revisarExpirados();
+-setInterval(revisarExpirados, 10 * 60 * 1000).unref();
++// Mantenimiento periódico: primero se consulta a Mercado Pago por los pagos pendientes (por si se perdió un
++// aviso del webhook) y después se liberan las piezas de los pedidos vencidos. Al arrancar y cada 5 minutos.
++let mantenimientoEnCurso = false;
++const mantenimiento = async () => {
++  if (mantenimientoEnCurso) return;
++  mantenimientoEnCurso = true;
++  try {
++    await conciliarPagosPendientes();
++  } catch (e) {
++    console.error('Error al conciliar pagos:', e.message);
++  }
++  try {
++    await expirarPedidosVencidos();
++  } catch (e) {
++    console.error('Error al expirar pedidos:', e.message);
++  } finally {
++    mantenimientoEnCurso = false;
++  }
++};
++await mantenimiento();
++setInterval(mantenimiento, 5 * 60 * 1000).unref();
+diff --git a/backend-practica-6-2/package-lock.json b/backend-practica-6-2/package-lock.json
+index ca8e1ff..3908ada 100644
+--- a/backend-practica-6-2/package-lock.json
++++ b/backend-practica-6-2/package-lock.json
+@@ -304,13 +304,13 @@
+       }
+     },
+     "node_modules/@graphql-tools/utils": {
+-      "version": "12.0.0",
+-      "resolved": "https://registry.npmjs.org/@graphql-tools/utils/-/utils-12.0.0.tgz",
+-      "integrity": "sha512-aMdIo/l+8j4lhamWAf+MWHr+lOW8zArSBKXspqtKHgt5I2JF9LS55KDLUe/L9AiJOV/O6qJJ60hgYydbnJHbxg==",
++      "version": "12.0.3",
++      "resolved": "https://registry.npmjs.org/@graphql-tools/utils/-/utils-12.0.3.tgz",
++      "integrity": "sha512-M+04bHvI1SKoug7W2EkwfKjig2mdtgIIlFY8p2jLHmxPNVs5bC/3R+58JrD+7ZXWgPILWTwuqJ9AqTjPlahroA==",
+       "license": "MIT",
+       "dependencies": {
+         "@graphql-typed-document-node/core": "^3.1.1",
+-        "@whatwg-node/promise-helpers": "^1.0.0",
++        "@whatwg-node/promise-helpers": "^2.0.0",
+         "cross-inspect": "1.0.1",
+         "tslib": "^2.4.0"
+       },
+@@ -400,15 +400,15 @@
+       "license": "MIT"
+     },
+     "node_modules/@whatwg-node/promise-helpers": {
+-      "version": "1.3.2",
+-      "resolved": "https://registry.npmjs.org/@whatwg-node/promise-helpers/-/promise-helpers-1.3.2.tgz",
+-      "integrity": "sha512-Nst5JdK47VIl9UcGwtv2Rcgyn5lWtZ0/mhRQ4G8NN2isxpq2TO30iqHzmwoJycjWuyUfg3GFXqP/gFHXeV57IA==",
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/@whatwg-node/promise-helpers/-/promise-helpers-2.0.0.tgz",
++      "integrity": "sha512-/i9CS0Z96o+cPwaYoAyVxAThDiUX1wV3tDmNWPJbn+vtdR+JftuCDg1NGCXBrzIYVDGkJ8uT6ctwmrBOUzOpKQ==",
+       "license": "MIT",
+       "dependencies": {
+         "tslib": "^2.6.3"
+       },
+       "engines": {
+-        "node": ">=16.0.0"
++        "node": ">=22.15.0"
+       }
+     },
+     "node_modules/accepts": {
+diff --git a/backend-practica-6-2/pagos.js b/backend-practica-6-2/pagos.js
+index 09f631d..1cdf5c1 100644
+--- a/backend-practica-6-2/pagos.js
++++ b/backend-practica-6-2/pagos.js
+@@ -6,15 +6,16 @@ import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+  * Capa de pagos de Baking Hub.
+  *
+  * Todo lo que habla con Mercado Pago vive en ESTE archivo. El resto del backend (index.js) solo usa
+- * las funciones exportadas, así que para integrar la API de Mercado Pago basta con completar las
+- * tres funciones marcadas con "TODO(MERCADO PAGO)":
++ * las funciones exportadas:
+  *
+- *   1. crearCobroMercadoPago()      -> crea el pago (tarjeta, OXXO, SPEI) o la preferencia (Mercado Pago)
+- *   2. consultarPagoMercadoPago()   -> consulta el estado real de un pago (lo usa el webhook)
+- *   3. (opcional) revisar verificarFirmaWebhook() contra tu panel de Mercado Pago
++ *   crearCobroMercadoPago()      -> crea el pago (tarjeta, OXXO, SPEI) o la preferencia (billetera)
++ *   consultarPagoMercadoPago()   -> consulta el estado real de un pago (webhook y conciliación)
++ *   buscarPagosDePedido()        -> busca los pagos de un pedido por external_reference (billetera)
++ *   verificarFirmaWebhook()      -> valida la cabecera x-signature de los avisos
+  *
+- * Mientras MP_MODO=simulado (valor por defecto) NO se llama a Mercado Pago: los pagos se simulan para
+- * poder probar todas las pantallas. Cuando termines la integración cambia MP_MODO=real en el .env.
++ * La integración YA está hecha: para usarla basta con llenar el .env (ver .env.example) y poner
++ * MP_MODO=real. Mientras MP_MODO=simulado (valor por defecto) NO se llama a Mercado Pago: los pagos se
++ * simulan para poder probar todas las pantallas. El modo simulado se rechaza con NODE_ENV=production.
+  */
+ 
+ export const METODOS_DISPONIBLES = ['tarjeta', 'oxxo', 'spei', 'mercadopago'];
+@@ -33,13 +34,30 @@ export const HORAS_PARA_PAGAR = Number(process.env.PEDIDO_EXPIRA_HORAS) || 72;
+ const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:4321').replace(/\/$/, '');
+ const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL ?? '').replace(/\/$/, '');
+ 
++// En simulado cualquier cliente puede "simular" que pagó (mutation simularPago): jamás en producción.
++if (MODO === 'simulado' && process.env.NODE_ENV === 'production') {
++  console.error('❌ MP_MODO=simulado no se permite con NODE_ENV=production (cualquiera podría marcar sus pedidos como pagados).');
++  console.error('   Usa MP_MODO=real con tus credenciales de Mercado Pago.');
++  process.exit(1);
++}
++
+ if (MODO === 'real') {
+   if (!process.env.MP_ACCESS_TOKEN) {
+     console.error('❌ MP_MODO=real pero falta MP_ACCESS_TOKEN en tu archivo .env');
+     process.exit(1);
+   }
++  if (BACKEND_PUBLIC_URL && !process.env.MP_WEBHOOK_SECRET) {
++    // Sin la clave secreta el webhook rechaza todos los avisos (401) y Mercado Pago los reintenta durante días.
++    console.error('❌ Hay BACKEND_PUBLIC_URL pero falta MP_WEBHOOK_SECRET (Tus integraciones → Webhooks → clave secreta).');
++    process.exit(1);
++  }
+   if (!BACKEND_PUBLIC_URL) {
+-    console.warn('⚠️  Falta BACKEND_PUBLIC_URL: Mercado Pago no podrá avisarte de pagos en OXXO/SPEI (webhook).');
++    console.warn(
++      '⚠️  Sin BACKEND_PUBLIC_URL no hay webhook: los pagos de OXXO/SPEI se confirmarán por consulta periódica\n' +
++        '   a Mercado Pago (cada 5 min). Para confirmación inmediata, pon una URL https pública en BACKEND_PUBLIC_URL.'
++    );
++  } else if (!BACKEND_PUBLIC_URL.startsWith('https://')) {
++    console.warn('⚠️  BACKEND_PUBLIC_URL debería ser https://… (Mercado Pago exige HTTPS para las notificaciones).');
+   }
+ }
+ const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN }) : null;
+@@ -70,12 +88,24 @@ export async function crearCobro({ pedido, usuario, metodo, tarjeta }) {
+   return crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta });
+ }
+ 
+-/** Consulta el estado real de un pago en Mercado Pago. Devuelve { pagoId, estado, pedidoId }. */
++/** Consulta el estado real de un pago en Mercado Pago. Devuelve { pagoId, estado, pedidoId, monto, moneda }. */
+ export async function consultarPago(pagoId) {
+   if (MODO === 'simulado') throw new Error('consultarPago no se usa en modo simulado');
+   return consultarPagoMercadoPago(pagoId);
+ }
+ 
++/**
++ * Busca en Mercado Pago los pagos hechos para un pedido (por external_reference).
++ * Sirve para el pago con la billetera (Checkout Pro), donde el id del pago no se conoce hasta que el cliente paga.
++ */
++export async function buscarPagosDePedido(pedidoId) {
++  if (MODO === 'simulado') return [];
++  const res = await new Payment(mp).search({
++    options: { external_reference: String(pedidoId), sort: 'date_created', criteria: 'desc', limit: 10 },
++  });
++  return (res.results ?? []).map(resumenPago);
++}
++
+ /** Traduce el estado de un pago de Mercado Pago al vocabulario de Baking Hub. */
+ export function estadoDesdeMercadoPago(status, statusDetail) {
+   switch (status) {
+@@ -127,14 +157,9 @@ function crearCobroSimulado({ metodo, tarjeta }) {
+  * -----------------------------------------------------------------------------------------------*/
+ 
+ /**
+- * TODO(MERCADO PAGO) — crear el cobro.
+- *
+- * Instala el SDK:  npm install mercadopago
++ * Crea el cobro en Mercado Pago (Payments API para tarjeta/OXXO/SPEI, Preferences para la billetera).
+  *
+- *   import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+- *   const mp = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+- *
+- * Datos que recibes:
++ * Datos que recibe:
+  *   pedido  -> { id, total }            (total en pesos; usa Number(pedido.total))
+  *   usuario -> { id, nombre, email }    (el pagador)
+  *   metodo  -> 'tarjeta' | 'oxxo' | 'spei' | 'mercadopago'
+@@ -234,15 +259,22 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
+   };
+ }
+ 
+-async function consultarPagoMercadoPago(pagoId) {
+-  const pago = await new Payment(mp).get({ id: pagoId });
++/** Reduce un pago de Mercado Pago a los datos que usa Baking Hub. */
++function resumenPago(pago) {
++  const pedidoId = Number(pago.external_reference);
+   return {
+     pagoId: String(pago.id),
+     estado: estadoDesdeMercadoPago(pago.status, pago.status_detail),
+-    pedidoId: pago.external_reference ? Number(pago.external_reference) : null,
++    pedidoId: Number.isInteger(pedidoId) && pedidoId > 0 ? pedidoId : null,
++    monto: Number(pago.transaction_amount),
++    moneda: pago.currency_id ?? null,
+   };
+ }
+ 
++async function consultarPagoMercadoPago(pagoId) {
++  return resumenPago(await new Payment(mp).get({ id: pagoId }));
++}
++
+ /**
+  * Valida la firma que Mercado Pago pone en cada notificación (cabecera x-signature) para asegurar que
+  * el aviso realmente viene de ellos. Necesita MP_WEBHOOK_SECRET (Tus integraciones -> Webhooks -> clave secreta).
+@@ -265,9 +297,10 @@ export function verificarFirmaWebhook(req) {
+   const { ts, v1 } = partes;
+   if (!ts || !v1) return false;
+ 
+-  // El id viene en la query (?data.id=123). Si es alfanumérico, Mercado Pago lo firma en minúsculas.
+-  const dataId = String(req.query['data.id'] ?? req.body?.data?.id ?? '').toLowerCase();
+-  const manifiesto = `id:${dataId};request-id:${requestId};ts:${ts};`;
++  // Plantilla oficial: "id:[data.id];request-id:[x-request-id];ts:[ts];". El id va en minúsculas y,
++  // según la documentación, si algún valor no viene en el aviso se quita ese segmento del manifiesto.
++  const dataId = idDeNotificacion(req).toLowerCase();
++  const manifiesto = [dataId && `id:${dataId};`, requestId && `request-id:${requestId};`, `ts:${ts};`].filter(Boolean).join('');
+   const esperado = crypto.createHmac('sha256', secreto).update(manifiesto).digest('hex');
+ 
+   const a = Buffer.from(esperado);
+@@ -275,4 +308,13 @@ export function verificarFirmaWebhook(req) {
+   return a.length === b.length && crypto.timingSafeEqual(a, b);
+ }
+ 
++/**
++ * Id del recurso del aviso. Se lee SIEMPRE de la query (?data.id=…), que es lo que Mercado Pago firma;
++ * el cuerpo solo se usa si la query no lo trae. Se usa tanto para verificar la firma como para procesar
++ * el aviso, así no se puede firmar un id y procesar otro.
++ */
++export function idDeNotificacion(req) {
++  return String(req.query?.['data.id'] ?? req.body?.data?.id ?? '');
++}
++
+ export { FRONTEND_URL, BACKEND_PUBLIC_URL };
+diff --git a/baking-hub-front/.env.example b/baking-hub-front/.env.example
+index a4e5146..1d7d24a 100644
+--- a/baking-hub-front/.env.example
++++ b/baking-hub-front/.env.example
+@@ -2,6 +2,8 @@
+ # URL del backend GraphQL (backend-practica-6-2)
+ GRAPHQL_URL=http://localhost:4000/
+ 
+-# Mercado Pago: clave PÚBLICA (la que empieza con APP_USR- o TEST-). Es segura para el navegador.
++# Mercado Pago: clave PÚBLICA (Tus integraciones -> Credenciales; empieza con APP_USR- o TEST-). Es segura para el navegador.
++# Debe corresponder al MISMO entorno que MP_ACCESS_TOKEN del backend (prueba con prueba, producción con producción).
++# Se incrusta al compilar: después de cambiarla reinicia `npm run dev` (o vuelve a hacer `npm run build`).
+ # Déjala vacía mientras el backend esté en MP_MODO=simulado.
+ PUBLIC_MP_PUBLIC_KEY=
+diff --git a/baking-hub-front/src/components/CheckoutView.tsx b/baking-hub-front/src/components/CheckoutView.tsx
+index 99fae5d..2dfbfca 100644
+--- a/baking-hub-front/src/components/CheckoutView.tsx
++++ b/baking-hub-front/src/components/CheckoutView.tsx
+@@ -3,9 +3,9 @@ import { useStore } from '@nanostores/react';
+ import { carrito, totalArticulos, totalPrecio, vaciar } from '../stores/carrito';
+ import { precio } from '../lib/format';
+ import { METODOS } from '../lib/pagos';
+-import type { DatosTarjeta } from '../lib/mercadopago-cliente';
+-import type { ErroresTarjeta } from '../lib/tarjeta';
+-import type { ConfigPagos, MetodoPago } from '../types';
++import { tokenizarTarjeta, type DatosTarjeta } from '../lib/mercadopago-cliente';
++import { validarTarjeta, type ErroresTarjeta } from '../lib/tarjeta';
++import type { ConfigPagos, MetodoPago, TarjetaTokenizada } from '../types';
+ import MetodosPago from './MetodosPago';
+ import FormularioTarjeta from './FormularioTarjeta';
+ import '../styles/carrito.css';
+@@ -39,41 +39,26 @@ export default function CheckoutView({ config, usuario }: Props) {
+ 
+   const manejarPago = async () => {
+     setError(null);
+-    let datosTarjeta: { token: string; paymentMethodId?: string; cuotas: number } | undefined;
++    let datosTarjeta: TarjetaTokenizada | undefined;
+ 
+     if (metodo === 'tarjeta') {
+-      if (!tarjeta.titular.trim()) {
+-        setErroresTarjeta({ titular: 'Ingresa el nombre del titular' });
+-        return;
+-      }
+-      setErroresTarjeta({});
++      // En modo real el número, vencimiento y CVV viven en iframes de Mercado Pago: aquí solo se valida el
++      // nombre y MP.js valida el resto al pedir el token. En modo simulado se validan todos los campos.
++      const errores: ErroresTarjeta =
++        config.modo === 'real'
++          ? tarjeta.titular.trim().length < 3
++            ? { titular: 'Escribe el nombre como aparece en la tarjeta.' }
++            : {}
++          : validarTarjeta(tarjeta);
++      setErroresTarjeta(errores);
++      if (Object.keys(errores).length > 0) return;
+     }
+ 
+     setPagando(true);
+ 
+     try {
+-      if (metodo === 'tarjeta') {
+-        const mp = (window as any).mpInstance || new (window as any).MercadoPago(
+-          import.meta.env.PUBLIC_MP_PUBLIC_KEY, 
+-          { locale: 'es-MX' }
+-        );
+-
+-        const tokenResult = await mp.fields.createCardToken({
+-          cardholderName: tarjeta.titular,
+-        });
+-
+-        if (!tokenResult || !tokenResult.id) {
+-          throw new Error('No se pudo validar la tarjeta. Revisa los datos e intenta de nuevo.');
+-        }
+-
+-        datosTarjeta = {
+-          token: tokenResult.id,
+-          paymentMethodId: tarjeta.paymentMethodId,
+-          cuotas: 1,
+-        };
+-
+-        setTarjeta(TARJETA_VACIA);
+-      }
++      // Los datos de la tarjeta se conservan en pantalla si algo falla, para que el cliente pueda reintentar.
++      if (metodo === 'tarjeta') datosTarjeta = await tokenizarTarjeta(tarjeta, config.modo);
+ 
+       const productos = items.flatMap((i) => Array<string>(i.cantidad).fill(i.id));
+       const res = await fetch('/api/pedido', {
+@@ -128,7 +113,13 @@ export default function CheckoutView({ config, usuario }: Props) {
+ 
+         <div className="metodo-detalle">
+           {metodo === 'tarjeta' && (
+-            <FormularioTarjeta valores={tarjeta} errores={erroresTarjeta} deshabilitado={pagando} onChange={setTarjeta} />
++            <FormularioTarjeta
++              modo={config.modo}
++              valores={tarjeta}
++              errores={erroresTarjeta}
++              deshabilitado={pagando}
++              onChange={setTarjeta}
++            />
+           )}
+ 
+           {metodo === 'oxxo' && (
+diff --git a/baking-hub-front/src/components/FormularioTarjeta.tsx b/baking-hub-front/src/components/FormularioTarjeta.tsx
+index 95ad46a..7975924 100644
+--- a/baking-hub-front/src/components/FormularioTarjeta.tsx
++++ b/baking-hub-front/src/components/FormularioTarjeta.tsx
+@@ -1,76 +1,111 @@
+-import { useEffect, useRef } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import type { DatosTarjeta } from '../lib/mercadopago-cliente';
+-import type { ErroresTarjeta } from '../lib/tarjeta';
++import { formatearNumero, formatearVencimiento, type ErroresTarjeta } from '../lib/tarjeta';
++import type { ConfigPagos } from '../types';
+ 
+ interface Props {
++  /** "real": campos seguros de Mercado Pago (iframes) · "simulado": campos normales y token falso. */
++  modo: ConfigPagos['modo'];
+   valores: DatosTarjeta;
+   errores: ErroresTarjeta;
+   deshabilitado?: boolean;
+   onChange: (valores: DatosTarjeta) => void;
+-  onSetCardTokenHandler?: (getCardToken: () => Promise<string | null>) => void;
+ }
+ 
+-export default function FormularioTarjeta({ valores, errores, deshabilitado, onChange }: Props) {
+-  const mpRef = useRef<any>(null);
++const PUBLIC_KEY = (import.meta.env.PUBLIC_MP_PUBLIC_KEY as string | undefined)?.trim();
++
++export default function FormularioTarjeta({ modo, valores, errores, deshabilitado, onChange }: Props) {
+   const valoresRef = useRef(valores);
++  const [errorSdk, setErrorSdk] = useState<string | null>(null);
+ 
+-  // Mantenemos una referencia actualizada de 'valores' para no perder datos en closures
++  // Referencia siempre actualizada para que el callback de binChange no use valores viejos.
+   useEffect(() => {
+     valoresRef.current = valores;
+   }, [valores]);
+ 
++  // Modo real: monta los campos seguros de Mercado Pago y los desmonta al salir (si el cliente cambia
++  // de método y regresa, se vuelven a crear en lugar de duplicarse).
+   useEffect(() => {
+-    if (typeof window !== 'undefined' && (window as any).MercadoPago) {
+-      // 1. Inicializar Mercado Pago
+-      const mp = new (window as any).MercadoPago(import.meta.env.PUBLIC_MP_PUBLIC_KEY, {
+-        locale: 'es-MX',
+-      });
+-      mpRef.current = mp;
+-      
+-      // Asignar a window para que CheckoutView pueda acceder si es necesario
+-      (window as any).mpInstance = mp;
++    if (modo !== 'real') return;
+ 
+-      // 2. Crear y montar los campos seguros
+-      const cardNumberElement = mp.fields.create('cardNumber', {
+-        placeholder: '0000 0000 0000 0000',
+-      }).mount('tc-numero');
++    const MercadoPago = (window as any).MercadoPago;
++    if (!PUBLIC_KEY) {
++      setErrorSdk('Falta PUBLIC_MP_PUBLIC_KEY en baking-hub-front/.env (y reiniciar el servidor de Astro).');
++      return;
++    }
++    if (!MercadoPago) {
++      setErrorSdk('No se pudo cargar el SDK de Mercado Pago. Revisa tu conexión o desactiva el bloqueador de anuncios.');
++      return;
++    }
++    setErrorSdk(null);
+ 
+-      mp.fields.create('expirationDate', {
+-        placeholder: 'MM/AA',
+-      }).mount('tc-venc');
++    const mp = (window as any).mpInstance ?? new MercadoPago(PUBLIC_KEY, { locale: 'es-MX' });
++    (window as any).mpInstance = mp; // lo usa tokenizarTarjeta() para pedir el token
+ 
+-      mp.fields.create('securityCode', {
+-        placeholder: '123',
+-      }).mount('tc-cvv');
++    const campos: Array<{ unmount?: () => void }> = [];
++    try {
++      const numero = mp.fields.create('cardNumber', { placeholder: '0000 0000 0000 0000' }).mount('tc-numero');
++      campos.push(
++        numero,
++        mp.fields.create('expirationDate', { placeholder: 'MM/AA' }).mount('tc-venc'),
++        mp.fields.create('securityCode', { placeholder: '123' }).mount('tc-cvv'),
++      );
+ 
+-      // 3. Detectar la franquicia de la tarjeta (Visa, Mastercard, Amex, etc.)
+-      cardNumberElement.on('binChange', async ({ bin }: { bin: string }) => {
+-        if (!bin) return;
++      // Detecta la franquicia (Visa, Mastercard, Amex…) con los primeros dígitos del número.
++      numero.on('binChange', async ({ bin }: { bin?: string }) => {
++        if (!bin) {
++          onChange({ ...valoresRef.current, paymentMethodId: undefined });
++          return;
++        }
+         try {
+           const { results } = await mp.getPaymentMethods({ bin });
+-          if (results && results.length > 0) {
+-            onChange({
+-              ...valoresRef.current,
+-              paymentMethodId: results[0].id,
+-            });
+-          }
++          if (results?.length) onChange({ ...valoresRef.current, paymentMethodId: results[0].id });
+         } catch (e) {
+           console.error('Error al detectar el método de pago:', e);
+         }
+       });
++    } catch (e) {
++      console.error('No se pudieron montar los campos de Mercado Pago:', e);
++      setErrorSdk('No se pudo iniciar el formulario seguro de Mercado Pago. Revisa tu PUBLIC_MP_PUBLIC_KEY.');
+     }
+-  }, []);
+ 
+-  const cambiarTitular = (valor: string) => {
+-    onChange({ ...valores, titular: valor });
+-  };
++    return () => {
++      for (const campo of campos) {
++        try {
++          campo.unmount?.();
++        } catch {
++          /* el campo ya no estaba montado */
++        }
++      }
++    };
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [modo]);
+ 
+   return (
+     <div className="tarjeta-form">
++      {errorSdk && (
++        <p className="aviso-sdk" role="alert">
++          {errorSdk}
++        </p>
++      )}
++
+       {/* NÚMERO DE TARJETA */}
+       <div className="campo-pago">
+-        <label>Número de tarjeta</label>
+-        <div id="tc-numero" className="mp-input-container" />
++        <label htmlFor={modo === 'real' ? undefined : 'tc-numero-sim'}>Número de tarjeta</label>
++        {modo === 'real' ? (
++          <div id="tc-numero" className="mp-input-container" />
++        ) : (
++          <input
++            id="tc-numero-sim"
++            inputMode="numeric"
++            autoComplete="cc-number"
++            placeholder="4242 4242 4242 4242"
++            value={valores.numero}
++            disabled={deshabilitado}
++            onChange={(e) => onChange({ ...valores, numero: formatearNumero(e.target.value) })}
++            aria-invalid={!!errores.numero}
++          />
++        )}
+         {errores.numero && <small className="campo-error">{errores.numero}</small>}
+       </div>
+ 
+@@ -83,7 +118,7 @@ export default function FormularioTarjeta({ valores, errores, deshabilitado, onC
+           placeholder="Como aparece en la tarjeta"
+           value={valores.titular}
+           disabled={deshabilitado}
+-          onChange={(e) => cambiarTitular(e.target.value)}
++          onChange={(e) => onChange({ ...valores, titular: e.target.value })}
+           aria-invalid={!!errores.titular}
+         />
+         {errores.titular && <small className="campo-error">{errores.titular}</small>}
+@@ -92,18 +127,45 @@ export default function FormularioTarjeta({ valores, errores, deshabilitado, onC
+       <div className="fila-doble">
+         {/* VENCIMIENTO */}
+         <div className="campo-pago">
+-          <label>Vencimiento</label>
+-          <div id="tc-venc" className="mp-input-container" />
++          <label htmlFor={modo === 'real' ? undefined : 'tc-venc-sim'}>Vencimiento</label>
++          {modo === 'real' ? (
++            <div id="tc-venc" className="mp-input-container" />
++          ) : (
++            <input
++              id="tc-venc-sim"
++              inputMode="numeric"
++              autoComplete="cc-exp"
++              placeholder="MM/AA"
++              value={valores.vencimiento}
++              disabled={deshabilitado}
++              onChange={(e) => onChange({ ...valores, vencimiento: formatearVencimiento(e.target.value) })}
++              aria-invalid={!!errores.vencimiento}
++            />
++          )}
+           {errores.vencimiento && <small className="campo-error">{errores.vencimiento}</small>}
+         </div>
+ 
+         {/* CVV */}
+         <div className="campo-pago">
+-          <label>Código (CVV)</label>
+-          <div id="tc-cvv" className="mp-input-container" />
++          <label htmlFor={modo === 'real' ? undefined : 'tc-cvv-sim'}>Código (CVV)</label>
++          {modo === 'real' ? (
++            <div id="tc-cvv" className="mp-input-container" />
++          ) : (
++            <input
++              id="tc-cvv-sim"
++              inputMode="numeric"
++              autoComplete="cc-csc"
++              placeholder="123"
++              maxLength={4}
++              value={valores.cvv}
++              disabled={deshabilitado}
++              onChange={(e) => onChange({ ...valores, cvv: e.target.value.replace(/\D/g, '') })}
++              aria-invalid={!!errores.cvv}
++            />
++          )}
+           {errores.cvv && <small className="campo-error">{errores.cvv}</small>}
+         </div>
+       </div>
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/baking-hub-front/src/lib/mercadopago-cliente.ts b/baking-hub-front/src/lib/mercadopago-cliente.ts
+index f63a8d7..5fdea89 100644
+--- a/baking-hub-front/src/lib/mercadopago-cliente.ts
++++ b/baking-hub-front/src/lib/mercadopago-cliente.ts
+@@ -1,4 +1,4 @@
+-import type { TarjetaTokenizada } from '../types';
++import type { ConfigPagos, TarjetaTokenizada } from '../types';
+ 
+ /**
+  * Tokenización de la tarjeta en el NAVEGADOR (lo único de Mercado Pago que vive en el frontend).
+@@ -6,17 +6,9 @@ import type { TarjetaTokenizada } from '../types';
+  * Regla de oro: el número de la tarjeta y el CVV jamás se envían a nuestro servidor. Mercado Pago los
+  * convierte en un `token` de un solo uso y solo ese token viaja al backend.
+  *
+- * Mientras PUBLIC_MP_PUBLIC_KEY esté vacío se usa un token FALSO (modo simulado) para poder probar la pantalla.
+- *
+- * ──────────────────────────────────────────────────────────────────────────────────────────────
+- * TODO(MERCADO PAGO) — para integrar la API en el frontend:
+- *   1. Pon tu clave pública en baking-hub-front/.env:  PUBLIC_MP_PUBLIC_KEY=APP_USR-...
+- *   2. Carga el SDK una sola vez (por ejemplo en src/layouts/Layout.astro):
+- *        <script src="https://sdk.mercadopago.com/js/v2" is:inline></script>
+- *   3. Completa tokenizarConMercadoPago() más abajo.
+- *   4. Recomendado por Mercado Pago (seguridad PCI): cambia los <input> de FormularioTarjeta.tsx por los
+- *      "Secure Fields" de MP.js, que renderizan los campos dentro de iframes de Mercado Pago.
+- * ──────────────────────────────────────────────────────────────────────────────────────────────
++ *  - modo "real":     los campos de número, vencimiento y CVV son "Secure Fields" de MP.js (iframes de Mercado Pago,
++ *                     ver FormularioTarjeta.tsx). Aquí solo se pide el token con createCardToken().
++ *  - modo "simulado": no se llama a Mercado Pago; se genera un token FALSO para poder probar las pantallas.
+  */
+ 
+ export interface DatosTarjeta {
+@@ -28,11 +20,8 @@ export interface DatosTarjeta {
+   paymentMethodId?: string;
+ }
+ 
+-const PUBLIC_KEY = import.meta.env.PUBLIC_MP_PUBLIC_KEY as string | undefined;
+-
+-export async function tokenizarTarjeta(datos: DatosTarjeta): Promise<TarjetaTokenizada> {
+-  if (PUBLIC_KEY && PUBLIC_KEY.trim()) return tokenizarConMercadoPago(datos);
+-  return tokenizarSimulado(datos);
++export async function tokenizarTarjeta(datos: DatosTarjeta, modo: ConfigPagos['modo']): Promise<TarjetaTokenizada> {
++  return modo === 'real' ? tokenizarConMercadoPago(datos) : tokenizarSimulado(datos);
+ }
+ 
+ /** Detecta la marca por el inicio del número (solo para el modo simulado). */
+@@ -53,20 +42,30 @@ async function tokenizarSimulado(datos: DatosTarjeta): Promise<TarjetaTokenizada
+   };
+ }
+ 
+-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+-async function tokenizarConMercadoPago(_datos: DatosTarjeta): Promise<TarjetaTokenizada> {
+-  // TODO(MERCADO PAGO): reemplaza este error por la integración. Esquema (MP.js v2):
+-  //
+-  //   const mp = new window.MercadoPago(PUBLIC_KEY, { locale: 'es-MX' });
+-  //   const [mes, anio] = _datos.vencimiento.split('/');
+-  //   const { id: token } = await mp.createCardToken({
+-  //     cardNumber: _datos.numero.replace(/\s/g, ''),
+-  //     cardholderName: _datos.titular,
+-  //     cardExpirationMonth: mes,
+-  //     cardExpirationYear: `20${anio}`,
+-  //     securityCode: _datos.cvv,
+-  //   });
+-  //   const { results } = await mp.getPaymentMethods({ bin: _datos.numero.replace(/\s/g, '').slice(0, 8) });
+-  //   return { token, paymentMethodId: results[0].id, issuerId: results[0].issuer?.id, cuotas: 1 };
+-  throw new Error('Falta integrar Mercado Pago en el navegador: completa tokenizarConMercadoPago() en src/lib/mercadopago-cliente.ts');
++/** MP.js rechaza con un arreglo de { code, message } o con un Error; lo convertimos en un texto para el cliente. */
++function mensajeErrorMP(e: unknown): string {
++  const lista = Array.isArray(e) ? e : [e];
++  const textos = lista
++    .map((x) => (x && typeof x === 'object' && 'message' in x ? String((x as { message: unknown }).message) : ''))
++    .filter(Boolean);
++  return textos.length > 0
++    ? `Revisa los datos de tu tarjeta (${textos.join('; ')}).`
++    : 'No se pudo validar la tarjeta. Revisa los datos e inténtalo de nuevo.';
++}
++
++async function tokenizarConMercadoPago(datos: DatosTarjeta): Promise<TarjetaTokenizada> {
++  const mp = (window as any).mpInstance;
++  if (!mp) throw new Error('El formulario de pago todavía no está listo. Recarga la página e inténtalo de nuevo.');
++  if (!datos.paymentMethodId) throw new Error('No pudimos identificar tu tarjeta. Revisa el número e inténtalo de nuevo.');
++
++  let resultado: { id?: string } | undefined;
++  try {
++    // Los datos de la tarjeta los lee MP.js directamente de sus campos seguros; aquí solo va el nombre.
++    resultado = await mp.fields.createCardToken({ cardholderName: datos.titular.trim() });
++  } catch (e) {
++    throw new Error(mensajeErrorMP(e));
++  }
++  if (!resultado?.id) throw new Error('No se pudo validar la tarjeta. Revisa los datos e inténtalo de nuevo.');
++
++  return { token: resultado.id, paymentMethodId: datos.paymentMethodId, cuotas: 1 };
+ }
+diff --git a/baking-hub-front/src/middleware.ts b/baking-hub-front/src/middleware.ts
+index 1941dca..7a0bc37 100644
+--- a/baking-hub-front/src/middleware.ts
++++ b/baking-hub-front/src/middleware.ts
+@@ -34,5 +34,12 @@ export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirec
+   if (RUTAS_ADMIN.some((r) => coincide(url.pathname, r)) && locals.usuario?.rol !== 'admin') {
+     return redirect('/');
+   }
+-  return next();
++
++  const respuesta = await next();
++  // Cabeceras básicas de endurecimiento. (No se fija una Content-Security-Policy aquí porque hay que
++  // permitir los dominios de Mercado Pago; ver la guía de seguridad antes de añadirla.)
++  respuesta.headers.set('X-Content-Type-Options', 'nosniff');
++  respuesta.headers.set('X-Frame-Options', 'DENY');
++  respuesta.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
++  return respuesta;
+ });
+diff --git a/baking-hub-front/src/pages/pedidos/[id].astro b/baking-hub-front/src/pages/pedidos/[id].astro
+index 78f47bd..810eb61 100644
+--- a/baking-hub-front/src/pages/pedidos/[id].astro
++++ b/baking-hub-front/src/pages/pedidos/[id].astro
+@@ -73,6 +73,13 @@ const pendiente = pedido?.status === 'pendiente';
+         )}
+ 
+         {pendiente && <InstruccionesPago pedido={pedido} />}
++        {
++          /* En modo real el pago de OXXO/SPEI se confirma en segundo plano: se recarga cada minuto (con la
++             pestaña visible) para que el cliente vea "Pagado" sin tener que actualizar a mano. */
++          pendiente && config?.modo === 'real' && (
++            <script is:inline set:html="setInterval(function () { if (!document.hidden) location.reload(); }, 60000);" />
++          )
++        }
+ 
+         {pedido.status === 'cancelado' && (
+           <p class="aviso">Este pedido fue cancelado y las piezas regresaron al inventario.</p>
+diff --git a/baking-hub-front/src/styles/pago.css b/baking-hub-front/src/styles/pago.css
+index 0b284fa..4e5d8cb 100644
+--- a/baking-hub-front/src/styles/pago.css
++++ b/baking-hub-front/src/styles/pago.css
+@@ -109,6 +109,21 @@
+ .campo-pago input[aria-invalid='true'] { border-color: var(--jam); }
+ .campo-error { color: var(--jam); font-size: 0.85rem; }
+ 
++/* Contenedores de los "Secure Fields" de Mercado Pago (iframes): sin altura propia se verían colapsados. */
++.mp-input-container {
++  height: 2.75rem;
++  padding: 0 0.8rem;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--cream);
++  display: flex;
++  align-items: center;
++}
++
++.mp-input-container iframe { width: 100%; }
++
++.aviso-sdk { color: var(--jam); font-size: 0.9rem; margin: 0 0 0.6rem; }
++
+ .fila-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+ 
+ /* ---------- Instrucciones OXXO / SPEI / Mercado Pago ---------- */

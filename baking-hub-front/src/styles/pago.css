@@ -109,6 +109,21 @@
 .campo-pago input[aria-invalid='true'] { border-color: var(--jam); }
 .campo-error { color: var(--jam); font-size: 0.85rem; }
 
+/* Contenedores de los "Secure Fields" de Mercado Pago (iframes): sin altura propia se verían colapsados. */
+.mp-input-container {
+  height: 2.75rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cream);
+  display: flex;
+  align-items: center;
+}
+
+.mp-input-container iframe { width: 100%; }
+
+.aviso-sdk { color: var(--jam); font-size: 0.9rem; margin: 0 0 0.6rem; }
+
 .fila-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
 
 /* ---------- Instrucciones OXXO / SPEI / Mercado Pago ---------- */

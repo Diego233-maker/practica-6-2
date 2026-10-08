@@ -3,9 +3,9 @@ import { useStore } from '@nanostores/react';
 import { carrito, totalArticulos, totalPrecio, vaciar } from '../stores/carrito';
 import { precio } from '../lib/format';
 import { METODOS } from '../lib/pagos';
-import type { DatosTarjeta } from '../lib/mercadopago-cliente';
-import type { ErroresTarjeta } from '../lib/tarjeta';
-import type { ConfigPagos, MetodoPago } from '../types';
+import { tokenizarTarjeta, type DatosTarjeta } from '../lib/mercadopago-cliente';
+import { validarTarjeta, type ErroresTarjeta } from '../lib/tarjeta';
+import type { ConfigPagos, MetodoPago, TarjetaTokenizada } from '../types';
 import MetodosPago from './MetodosPago';
 import FormularioTarjeta from './FormularioTarjeta';
 import '../styles/carrito.css';
@@ -39,41 +39,26 @@ export default function CheckoutView({ config, usuario }: Props) {
 
   const manejarPago = async () => {
     setError(null);
-    let datosTarjeta: { token: string; paymentMethodId?: string; cuotas: number } | undefined;
+    let datosTarjeta: TarjetaTokenizada | undefined;
 
     if (metodo === 'tarjeta') {
-      if (!tarjeta.titular.trim()) {
-        setErroresTarjeta({ titular: 'Ingresa el nombre del titular' });
-        return;
-      }
-      setErroresTarjeta({});
+      // En modo real el número, vencimiento y CVV viven en iframes de Mercado Pago: aquí solo se valida el
+      // nombre y MP.js valida el resto al pedir el token. En modo simulado se validan todos los campos.
+      const errores: ErroresTarjeta =
+        config.modo === 'real'
+          ? tarjeta.titular.trim().length < 3
+            ? { titular: 'Escribe el nombre como aparece en la tarjeta.' }
+            : {}
+          : validarTarjeta(tarjeta);
+      setErroresTarjeta(errores);
+      if (Object.keys(errores).length > 0) return;
     }
 
     setPagando(true);
 
     try {
-      if (metodo === 'tarjeta') {
-        const mp = (window as any).mpInstance || new (window as any).MercadoPago(
-          import.meta.env.PUBLIC_MP_PUBLIC_KEY, 
-          { locale: 'es-MX' }
-        );
-
-        const tokenResult = await mp.fields.createCardToken({
-          cardholderName: tarjeta.titular,
-        });
-
-        if (!tokenResult || !tokenResult.id) {
-          throw new Error('No se pudo validar la tarjeta. Revisa los datos e intenta de nuevo.');
-        }
-
-        datosTarjeta = {
-          token: tokenResult.id,
-          paymentMethodId: tarjeta.paymentMethodId,
-          cuotas: 1,
-        };
-
-        setTarjeta(TARJETA_VACIA);
-      }
+      // Los datos de la tarjeta se conservan en pantalla si algo falla, para que el cliente pueda reintentar.
+      if (metodo === 'tarjeta') datosTarjeta = await tokenizarTarjeta(tarjeta, config.modo);
 
       const productos = items.flatMap((i) => Array<string>(i.cantidad).fill(i.id));
       const res = await fetch('/api/pedido', {
@@ -128,7 +113,13 @@ export default function CheckoutView({ config, usuario }: Props) {
 
         <div className="metodo-detalle">
           {metodo === 'tarjeta' && (
-            <FormularioTarjeta valores={tarjeta} errores={erroresTarjeta} deshabilitado={pagando} onChange={setTarjeta} />
+            <FormularioTarjeta
+              modo={config.modo}
+              valores={tarjeta}
+              errores={erroresTarjeta}
+              deshabilitado={pagando}
+              onChange={setTarjeta}
+            />
           )}
 
           {metodo === 'oxxo' && (

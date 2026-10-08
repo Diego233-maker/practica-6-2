@@ -73,6 +73,13 @@ const pendiente = pedido?.status === 'pendiente';
         )}
 
         {pendiente && <InstruccionesPago pedido={pedido} />}
+        {
+          /* En modo real el pago de OXXO/SPEI se confirma en segundo plano: se recarga cada minuto (con la
+             pestaña visible) para que el cliente vea "Pagado" sin tener que actualizar a mano. */
+          pendiente && config?.modo === 'real' && (
+            <script is:inline set:html="setInterval(function () { if (!document.hidden) location.reload(); }, 60000);" />
+          )
+        }
 
         {pedido.status === 'cancelado' && (
           <p class="aviso">Este pedido fue cancelado y las piezas regresaron al inventario.</p>

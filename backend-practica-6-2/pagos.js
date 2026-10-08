@@ -6,15 +6,16 @@ import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
  * Capa de pagos de Baking Hub.
  *
  * Todo lo que habla con Mercado Pago vive en ESTE archivo. El resto del backend (index.js) solo usa
- * las funciones exportadas, así que para integrar la API de Mercado Pago basta con completar las
- * tres funciones marcadas con "TODO(MERCADO PAGO)":
+ * las funciones exportadas:
  *
- *   1. crearCobroMercadoPago()      -> crea el pago (tarjeta, OXXO, SPEI) o la preferencia (Mercado Pago)
- *   2. consultarPagoMercadoPago()   -> consulta el estado real de un pago (lo usa el webhook)
- *   3. (opcional) revisar verificarFirmaWebhook() contra tu panel de Mercado Pago
+ *   crearCobroMercadoPago()      -> crea el pago (tarjeta, OXXO, SPEI) o la preferencia (billetera)
+ *   consultarPagoMercadoPago()   -> consulta el estado real de un pago (webhook y conciliación)
+ *   buscarPagosDePedido()        -> busca los pagos de un pedido por external_reference (billetera)
+ *   verificarFirmaWebhook()      -> valida la cabecera x-signature de los avisos
  *
- * Mientras MP_MODO=simulado (valor por defecto) NO se llama a Mercado Pago: los pagos se simulan para
- * poder probar todas las pantallas. Cuando termines la integración cambia MP_MODO=real en el .env.
+ * La integración YA está hecha: para usarla basta con llenar el .env (ver .env.example) y poner
+ * MP_MODO=real. Mientras MP_MODO=simulado (valor por defecto) NO se llama a Mercado Pago: los pagos se
+ * simulan para poder probar todas las pantallas. El modo simulado se rechaza con NODE_ENV=production.
  */
 
 export const METODOS_DISPONIBLES = ['tarjeta', 'oxxo', 'spei', 'mercadopago'];
@@ -33,13 +34,30 @@ export const HORAS_PARA_PAGAR = Number(process.env.PEDIDO_EXPIRA_HORAS) || 72;
 const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:4321').replace(/\/$/, '');
 const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL ?? '').replace(/\/$/, '');
 
+// En simulado cualquier cliente puede "simular" que pagó (mutation simularPago): jamás en producción.
+if (MODO === 'simulado' && process.env.NODE_ENV === 'production') {
+  console.error('❌ MP_MODO=simulado no se permite con NODE_ENV=production (cualquiera podría marcar sus pedidos como pagados).');
+  console.error('   Usa MP_MODO=real con tus credenciales de Mercado Pago.');
+  process.exit(1);
+}
+
 if (MODO === 'real') {
   if (!process.env.MP_ACCESS_TOKEN) {
     console.error('❌ MP_MODO=real pero falta MP_ACCESS_TOKEN en tu archivo .env');
     process.exit(1);
   }
+  if (BACKEND_PUBLIC_URL && !process.env.MP_WEBHOOK_SECRET) {
+    // Sin la clave secreta el webhook rechaza todos los avisos (401) y Mercado Pago los reintenta durante días.
+    console.error('❌ Hay BACKEND_PUBLIC_URL pero falta MP_WEBHOOK_SECRET (Tus integraciones → Webhooks → clave secreta).');
+    process.exit(1);
+  }
   if (!BACKEND_PUBLIC_URL) {
-    console.warn('⚠️  Falta BACKEND_PUBLIC_URL: Mercado Pago no podrá avisarte de pagos en OXXO/SPEI (webhook).');
+    console.warn(
+      '⚠️  Sin BACKEND_PUBLIC_URL no hay webhook: los pagos de OXXO/SPEI se confirmarán por consulta periódica\n' +
+        '   a Mercado Pago (cada 5 min). Para confirmación inmediata, pon una URL https pública en BACKEND_PUBLIC_URL.'
+    );
+  } else if (!BACKEND_PUBLIC_URL.startsWith('https://')) {
+    console.warn('⚠️  BACKEND_PUBLIC_URL debería ser https://… (Mercado Pago exige HTTPS para las notificaciones).');
   }
 }
 const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN }) : null;
@@ -70,10 +88,22 @@ export async function crearCobro({ pedido, usuario, metodo, tarjeta }) {
   return crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta });
 }
 
-/** Consulta el estado real de un pago en Mercado Pago. Devuelve { pagoId, estado, pedidoId }. */
+/** Consulta el estado real de un pago en Mercado Pago. Devuelve { pagoId, estado, pedidoId, monto, moneda }. */
 export async function consultarPago(pagoId) {
   if (MODO === 'simulado') throw new Error('consultarPago no se usa en modo simulado');
   return consultarPagoMercadoPago(pagoId);
+}
+
+/**
+ * Busca en Mercado Pago los pagos hechos para un pedido (por external_reference).
+ * Sirve para el pago con la billetera (Checkout Pro), donde el id del pago no se conoce hasta que el cliente paga.
+ */
+export async function buscarPagosDePedido(pedidoId) {
+  if (MODO === 'simulado') return [];
+  const res = await new Payment(mp).search({
+    options: { external_reference: String(pedidoId), sort: 'date_created', criteria: 'desc', limit: 10 },
+  });
+  return (res.results ?? []).map(resumenPago);
 }
 
 /** Traduce el estado de un pago de Mercado Pago al vocabulario de Baking Hub. */
@@ -127,14 +157,9 @@ function crearCobroSimulado({ metodo, tarjeta }) {
  * -----------------------------------------------------------------------------------------------*/
 
 /**
- * TODO(MERCADO PAGO) — crear el cobro.
+ * Crea el cobro en Mercado Pago (Payments API para tarjeta/OXXO/SPEI, Preferences para la billetera).
  *
- * Instala el SDK:  npm install mercadopago
- *
- *   import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
- *   const mp = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
- *
- * Datos que recibes:
+ * Datos que recibe:
  *   pedido  -> { id, total }            (total en pesos; usa Number(pedido.total))
  *   usuario -> { id, nombre, email }    (el pagador)
  *   metodo  -> 'tarjeta' | 'oxxo' | 'spei' | 'mercadopago'
@@ -234,13 +259,20 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
   };
 }
 
-async function consultarPagoMercadoPago(pagoId) {
-  const pago = await new Payment(mp).get({ id: pagoId });
+/** Reduce un pago de Mercado Pago a los datos que usa Baking Hub. */
+function resumenPago(pago) {
+  const pedidoId = Number(pago.external_reference);
   return {
     pagoId: String(pago.id),
     estado: estadoDesdeMercadoPago(pago.status, pago.status_detail),
-    pedidoId: pago.external_reference ? Number(pago.external_reference) : null,
+    pedidoId: Number.isInteger(pedidoId) && pedidoId > 0 ? pedidoId : null,
+    monto: Number(pago.transaction_amount),
+    moneda: pago.currency_id ?? null,
   };
+}
+
+async function consultarPagoMercadoPago(pagoId) {
+  return resumenPago(await new Payment(mp).get({ id: pagoId }));
 }
 
 /**
@@ -265,14 +297,24 @@ export function verificarFirmaWebhook(req) {
   const { ts, v1 } = partes;
   if (!ts || !v1) return false;
 
-  // El id viene en la query (?data.id=123). Si es alfanumérico, Mercado Pago lo firma en minúsculas.
-  const dataId = String(req.query['data.id'] ?? req.body?.data?.id ?? '').toLowerCase();
-  const manifiesto = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  // Plantilla oficial: "id:[data.id];request-id:[x-request-id];ts:[ts];". El id va en minúsculas y,
+  // según la documentación, si algún valor no viene en el aviso se quita ese segmento del manifiesto.
+  const dataId = idDeNotificacion(req).toLowerCase();
+  const manifiesto = [dataId && `id:${dataId};`, requestId && `request-id:${requestId};`, `ts:${ts};`].filter(Boolean).join('');
   const esperado = crypto.createHmac('sha256', secreto).update(manifiesto).digest('hex');
 
   const a = Buffer.from(esperado);
   const b = Buffer.from(v1);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Id del recurso del aviso. Se lee SIEMPRE de la query (?data.id=…), que es lo que Mercado Pago firma;
+ * el cuerpo solo se usa si la query no lo trae. Se usa tanto para verificar la firma como para procesar
+ * el aviso, así no se puede firmar un id y procesar otro.
+ */
+export function idDeNotificacion(req) {
+  return String(req.query?.['data.id'] ?? req.body?.data?.id ?? '');
 }
 
 export { FRONTEND_URL, BACKEND_PUBLIC_URL };

@@ -1,76 +1,111 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DatosTarjeta } from '../lib/mercadopago-cliente';
-import type { ErroresTarjeta } from '../lib/tarjeta';
+import { formatearNumero, formatearVencimiento, type ErroresTarjeta } from '../lib/tarjeta';
+import type { ConfigPagos } from '../types';
 
 interface Props {
+  /** "real": campos seguros de Mercado Pago (iframes) · "simulado": campos normales y token falso. */
+  modo: ConfigPagos['modo'];
   valores: DatosTarjeta;
   errores: ErroresTarjeta;
   deshabilitado?: boolean;
   onChange: (valores: DatosTarjeta) => void;
-  onSetCardTokenHandler?: (getCardToken: () => Promise<string | null>) => void;
 }
 
-export default function FormularioTarjeta({ valores, errores, deshabilitado, onChange }: Props) {
-  const mpRef = useRef<any>(null);
-  const valoresRef = useRef(valores);
+const PUBLIC_KEY = (import.meta.env.PUBLIC_MP_PUBLIC_KEY as string | undefined)?.trim();
 
-  // Mantenemos una referencia actualizada de 'valores' para no perder datos en closures
+export default function FormularioTarjeta({ modo, valores, errores, deshabilitado, onChange }: Props) {
+  const valoresRef = useRef(valores);
+  const [errorSdk, setErrorSdk] = useState<string | null>(null);
+
+  // Referencia siempre actualizada para que el callback de binChange no use valores viejos.
   useEffect(() => {
     valoresRef.current = valores;
   }, [valores]);
 
+  // Modo real: monta los campos seguros de Mercado Pago y los desmonta al salir (si el cliente cambia
+  // de método y regresa, se vuelven a crear en lugar de duplicarse).
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).MercadoPago) {
-      // 1. Inicializar Mercado Pago
-      const mp = new (window as any).MercadoPago(import.meta.env.PUBLIC_MP_PUBLIC_KEY, {
-        locale: 'es-MX',
-      });
-      mpRef.current = mp;
-      
-      // Asignar a window para que CheckoutView pueda acceder si es necesario
-      (window as any).mpInstance = mp;
+    if (modo !== 'real') return;
 
-      // 2. Crear y montar los campos seguros
-      const cardNumberElement = mp.fields.create('cardNumber', {
-        placeholder: '0000 0000 0000 0000',
-      }).mount('tc-numero');
+    const MercadoPago = (window as any).MercadoPago;
+    if (!PUBLIC_KEY) {
+      setErrorSdk('Falta PUBLIC_MP_PUBLIC_KEY en baking-hub-front/.env (y reiniciar el servidor de Astro).');
+      return;
+    }
+    if (!MercadoPago) {
+      setErrorSdk('No se pudo cargar el SDK de Mercado Pago. Revisa tu conexión o desactiva el bloqueador de anuncios.');
+      return;
+    }
+    setErrorSdk(null);
 
-      mp.fields.create('expirationDate', {
-        placeholder: 'MM/AA',
-      }).mount('tc-venc');
+    const mp = (window as any).mpInstance ?? new MercadoPago(PUBLIC_KEY, { locale: 'es-MX' });
+    (window as any).mpInstance = mp; // lo usa tokenizarTarjeta() para pedir el token
 
-      mp.fields.create('securityCode', {
-        placeholder: '123',
-      }).mount('tc-cvv');
+    const campos: Array<{ unmount?: () => void }> = [];
+    try {
+      const numero = mp.fields.create('cardNumber', { placeholder: '0000 0000 0000 0000' }).mount('tc-numero');
+      campos.push(
+        numero,
+        mp.fields.create('expirationDate', { placeholder: 'MM/AA' }).mount('tc-venc'),
+        mp.fields.create('securityCode', { placeholder: '123' }).mount('tc-cvv'),
+      );
 
-      // 3. Detectar la franquicia de la tarjeta (Visa, Mastercard, Amex, etc.)
-      cardNumberElement.on('binChange', async ({ bin }: { bin: string }) => {
-        if (!bin) return;
+      // Detecta la franquicia (Visa, Mastercard, Amex…) con los primeros dígitos del número.
+      numero.on('binChange', async ({ bin }: { bin?: string }) => {
+        if (!bin) {
+          onChange({ ...valoresRef.current, paymentMethodId: undefined });
+          return;
+        }
         try {
           const { results } = await mp.getPaymentMethods({ bin });
-          if (results && results.length > 0) {
-            onChange({
-              ...valoresRef.current,
-              paymentMethodId: results[0].id,
-            });
-          }
+          if (results?.length) onChange({ ...valoresRef.current, paymentMethodId: results[0].id });
         } catch (e) {
           console.error('Error al detectar el método de pago:', e);
         }
       });
+    } catch (e) {
+      console.error('No se pudieron montar los campos de Mercado Pago:', e);
+      setErrorSdk('No se pudo iniciar el formulario seguro de Mercado Pago. Revisa tu PUBLIC_MP_PUBLIC_KEY.');
     }
-  }, []);
 
-  const cambiarTitular = (valor: string) => {
-    onChange({ ...valores, titular: valor });
-  };
+    return () => {
+      for (const campo of campos) {
+        try {
+          campo.unmount?.();
+        } catch {
+          /* el campo ya no estaba montado */
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo]);
 
   return (
     <div className="tarjeta-form">
+      {errorSdk && (
+        <p className="aviso-sdk" role="alert">
+          {errorSdk}
+        </p>
+      )}
+
       {/* NÚMERO DE TARJETA */}
       <div className="campo-pago">
-        <label>Número de tarjeta</label>
-        <div id="tc-numero" className="mp-input-container" />
+        <label htmlFor={modo === 'real' ? undefined : 'tc-numero-sim'}>Número de tarjeta</label>
+        {modo === 'real' ? (
+          <div id="tc-numero" className="mp-input-container" />
+        ) : (
+          <input
+            id="tc-numero-sim"
+            inputMode="numeric"
+            autoComplete="cc-number"
+            placeholder="4242 4242 4242 4242"
+            value={valores.numero}
+            disabled={deshabilitado}
+            onChange={(e) => onChange({ ...valores, numero: formatearNumero(e.target.value) })}
+            aria-invalid={!!errores.numero}
+          />
+        )}
         {errores.numero && <small className="campo-error">{errores.numero}</small>}
       </div>
 
@@ -83,7 +118,7 @@ export default function FormularioTarjeta({ valores, errores, deshabilitado, onC
           placeholder="Como aparece en la tarjeta"
           value={valores.titular}
           disabled={deshabilitado}
-          onChange={(e) => cambiarTitular(e.target.value)}
+          onChange={(e) => onChange({ ...valores, titular: e.target.value })}
           aria-invalid={!!errores.titular}
         />
         {errores.titular && <small className="campo-error">{errores.titular}</small>}
@@ -92,15 +127,42 @@ export default function FormularioTarjeta({ valores, errores, deshabilitado, onC
       <div className="fila-doble">
         {/* VENCIMIENTO */}
         <div className="campo-pago">
-          <label>Vencimiento</label>
-          <div id="tc-venc" className="mp-input-container" />
+          <label htmlFor={modo === 'real' ? undefined : 'tc-venc-sim'}>Vencimiento</label>
+          {modo === 'real' ? (
+            <div id="tc-venc" className="mp-input-container" />
+          ) : (
+            <input
+              id="tc-venc-sim"
+              inputMode="numeric"
+              autoComplete="cc-exp"
+              placeholder="MM/AA"
+              value={valores.vencimiento}
+              disabled={deshabilitado}
+              onChange={(e) => onChange({ ...valores, vencimiento: formatearVencimiento(e.target.value) })}
+              aria-invalid={!!errores.vencimiento}
+            />
+          )}
           {errores.vencimiento && <small className="campo-error">{errores.vencimiento}</small>}
         </div>
 
         {/* CVV */}
         <div className="campo-pago">
-          <label>Código (CVV)</label>
-          <div id="tc-cvv" className="mp-input-container" />
+          <label htmlFor={modo === 'real' ? undefined : 'tc-cvv-sim'}>Código (CVV)</label>
+          {modo === 'real' ? (
+            <div id="tc-cvv" className="mp-input-container" />
+          ) : (
+            <input
+              id="tc-cvv-sim"
+              inputMode="numeric"
+              autoComplete="cc-csc"
+              placeholder="123"
+              maxLength={4}
+              value={valores.cvv}
+              disabled={deshabilitado}
+              onChange={(e) => onChange({ ...valores, cvv: e.target.value.replace(/\D/g, '') })}
+              aria-invalid={!!errores.cvv}
+            />
+          )}
           {errores.cvv && <small className="campo-error">{errores.cvv}</small>}
         </div>
       </div>

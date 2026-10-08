@@ -19,8 +19,10 @@ import {
   HORAS_PARA_PAGAR,
   METODOS_ACTIVOS,
   MODO,
+  buscarPagosDePedido,
   consultarPago,
   crearCobro,
+  idDeNotificacion,
   verificarFirmaWebhook,
 } from './pagos.js';
 
@@ -202,6 +204,35 @@ const requiereAdmin = (ctx) => {
 const USUARIO_PUBLICO = 'id, nombre, email, rol';
 const STOCK_BAJO = 5;
 
+// Un pedido pendiente de OXXO/SPEI aparta piezas hasta 72 h: se limita cuántos puede tener un cliente a la vez.
+const MAX_PEDIDOS_PENDIENTES = Number(process.env.MAX_PEDIDOS_PENDIENTES) || 5;
+
+/* Freno a la fuerza bruta del login: máximo de fallos por correo en una ventana de tiempo.
+ * (Las peticiones llegan desde el servidor de Astro, así que limitar por IP aquí no serviría.) */
+const MAX_FALLOS_LOGIN = 8;
+const VENTANA_LOGIN_MS = 15 * 60 * 1000;
+const fallosLogin = new Map(); // email -> { cuenta, desde }
+
+function loginBloqueado(email) {
+  const f = fallosLogin.get(email);
+  if (!f) return false;
+  if (Date.now() - f.desde > VENTANA_LOGIN_MS) {
+    fallosLogin.delete(email);
+    return false;
+  }
+  return f.cuenta >= MAX_FALLOS_LOGIN;
+}
+
+function registrarFalloLogin(email) {
+  const ahora = Date.now();
+  if (fallosLogin.size > 5000) {
+    for (const [clave, f] of fallosLogin) if (ahora - f.desde > VENTANA_LOGIN_MS) fallosLogin.delete(clave);
+  }
+  const f = fallosLogin.get(email);
+  if (!f || ahora - f.desde > VENTANA_LOGIN_MS) fallosLogin.set(email, { cuenta: 1, desde: ahora });
+  else f.cuenta += 1;
+}
+
 /** Convierte un id de GraphQL en entero o lanza un error claro. */
 function idEntero(id) {
   const n = Number(id);
@@ -262,10 +293,27 @@ async function aplicarEstadoPago(pedidoId, estado, pagoId = null) {
           WHERE id = $1 AND status = 'pendiente'`,
         [pedidoId, pagoId]
       );
-      if (res.rowCount === 0) console.warn(`Pago recibido para el pedido ${pedidoId}, pero ya no estaba pendiente. Revísalo a mano.`);
+      if (res.rowCount === 0) {
+        const actual = await pool.query('SELECT status FROM pedidos WHERE id = $1', [pedidoId]);
+        const status = actual.rows[0]?.status;
+        // Un pedido ya pagado que vuelve a avisar (reintento del webhook) es normal; lo demás necesita atención.
+        if (status !== 'pagado') {
+          console.error(
+            `⚠️ Mercado Pago cobró el pago ${pagoId ?? '?'} del pedido ${pedidoId}, pero el pedido está "${status ?? 'inexistente'}" ` +
+              '(sus piezas ya se liberaron). Reembolsa el pago desde tu cuenta de Mercado Pago o reactiva el pedido a mano.'
+          );
+        }
+      }
       return;
     }
-    case 'rechazado':
+    case 'rechazado': {
+      // En la billetera (Checkout Pro) el cliente puede reintentar con otra tarjeta dentro de la misma
+      // preferencia: un intento rechazado NO cancela el pedido; lo cancela la expiración de la preferencia.
+      const fila = await pool.query('SELECT metodo_pago FROM pedidos WHERE id = $1', [pedidoId]);
+      if (fila.rows[0]?.metodo_pago === 'mercadopago') return;
+      await cancelarPedido(pedidoId, 'cancelado');
+      return;
+    }
     case 'cancelado':
       await cancelarPedido(pedidoId, 'cancelado');
       return;
@@ -278,6 +326,65 @@ async function aplicarEstadoPago(pedidoId, estado, pagoId = null) {
     default:
       return; // 'pendiente': no hay nada que cambiar
   }
+}
+
+/**
+ * Aplica un pago ya consultado a Mercado Pago (lo usan el webhook y la conciliación periódica).
+ * Antes de tocar el pedido comprueba que el monto cobrado coincida con el total del pedido.
+ */
+async function procesarPagoMercadoPago(pago) {
+  let pedidoId = pago.pedidoId;
+  if (!pedidoId) {
+    const fila = await pool.query('SELECT id FROM pedidos WHERE pago_id = $1', [pago.pagoId]);
+    pedidoId = fila.rows[0]?.id ?? null;
+  }
+  if (!pedidoId) {
+    console.warn(`El pago ${pago.pagoId} no corresponde a ningún pedido`);
+    return false;
+  }
+  const pedido = await pool.query('SELECT total FROM pedidos WHERE id = $1', [pedidoId]);
+  if (!pedido.rows[0]) {
+    console.warn(`El pago ${pago.pagoId} apunta al pedido ${pedidoId}, que no existe`);
+    return false;
+  }
+  if ((pago.moneda && pago.moneda !== 'MXN') || !Number.isFinite(pago.monto) || Math.abs(pago.monto - Number(pedido.rows[0].total)) > 0.009) {
+    console.error(
+      `⚠️ El pago ${pago.pagoId} es de ${pago.monto} ${pago.moneda ?? ''} y el pedido ${pedidoId} vale ${pedido.rows[0].total} MXN: se ignora.`
+    );
+    return false;
+  }
+  await aplicarEstadoPago(pedidoId, pago.estado, pago.pagoId);
+  return true;
+}
+
+/**
+ * Respaldo del webhook: pregunta a Mercado Pago por los pedidos que siguen pendientes. Así los pagos de
+ * OXXO/SPEI se confirman aunque el webhook no esté configurado (por ejemplo en desarrollo, sin ngrok) o se pierda un aviso.
+ */
+async function conciliarPagosPendientes() {
+  if (MODO !== 'real') return;
+  const res = await pool.query(
+    `SELECT id, pago_id FROM pedidos
+      WHERE status = 'pendiente' AND fecha > NOW() - INTERVAL '10 days'
+        AND (pago_id IS NOT NULL OR metodo_pago = 'mercadopago')
+      ORDER BY id LIMIT 100`
+  );
+  let revisados = 0;
+  for (const p of res.rows) {
+    try {
+      if (p.pago_id) {
+        await procesarPagoMercadoPago(await consultarPago(p.pago_id));
+      } else {
+        // Billetera: el id del pago aún no se conocía; se busca por external_reference (= id del pedido).
+        const aprobado = (await buscarPagosDePedido(p.id)).find((x) => x.estado === 'pagado');
+        if (aprobado) await procesarPagoMercadoPago(aprobado);
+      }
+      revisados += 1;
+    } catch (error) {
+      console.error(`Conciliación del pedido ${p.id}:`, error.message);
+    }
+  }
+  if (revisados > 0) console.log(`Conciliación: ${revisados} pedido(s) pendiente(s) revisados en Mercado Pago`);
 }
 
 /** Respaldo local: libera el stock de pedidos de OXXO/SPEI que nadie pagó (1 h de gracia sobre la fecha límite). */
@@ -413,12 +520,18 @@ const resolvers = {
     },
 
     login: async (_, { email, password }) => {
-      const res = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
+      email = email.trim().toLowerCase().slice(0, 254);
+      if (loginBloqueado(email)) throw errorNoAutenticado('Demasiados intentos fallidos. Inténtalo de nuevo en unos minutos.');
+      const res = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
       const fila = res.rows[0];
       const passwordOk = await verificarPassword(password, fila?.password_hash);
-      if (!fila || !passwordOk) throw errorNoAutenticado('Correo o contraseña incorrectos');
+      if (!fila || !passwordOk) {
+        registrarFalloLogin(email);
+        throw errorNoAutenticado('Correo o contraseña incorrectos');
+      }
       // Se revisa después de la contraseña para no revelar a desconocidos qué correos existen.
       if (!fila.activo) throw errorNoAutenticado('Tu cuenta está suspendida. Contacta a la tienda para reactivarla.');
+      fallosLogin.delete(email);
       const { password_hash, ...usuario } = fila;
       return { token: firmarToken(usuario), usuario };
     },
@@ -429,7 +542,9 @@ const resolvers = {
 
       const metodo = metodoPago.trim().toLowerCase();
       if (!METODOS_ACTIVOS.includes(metodo)) throw errorDeUsuario('Ese método de pago no está disponible');
-      if (metodo === 'tarjeta' && !tarjeta?.token) throw errorDeUsuario('Falta la información de la tarjeta');
+      if (metodo === 'tarjeta' && (!tarjeta?.token || !tarjeta?.paymentMethodId)) {
+        throw errorDeUsuario('Falta la información de la tarjeta');
+      }
 
       // Los ids repetidos cuentan como cantidad: ["1","1","3"] => 2 x producto 1, 1 x producto 3.
       const cantidades = new Map();
@@ -444,6 +559,10 @@ const resolvers = {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        const pendientes = await client.query("SELECT COUNT(*)::int AS n FROM pedidos WHERE usuario_id = $1 AND status = 'pendiente'", [usuario.id]);
+        if (pendientes.rows[0].n >= MAX_PEDIDOS_PENDIENTES) {
+          throw errorDeUsuario('Tienes varios pedidos pendientes de pago. Paga alguno o espera a que expire antes de hacer otro.');
+        }
         const encontrados = await client.query(
           'SELECT id, nombre, precio, stock FROM productos WHERE id = ANY($1::int[]) AND activo ORDER BY id FOR UPDATE',
           [[...cantidades.keys()]]
@@ -493,11 +612,14 @@ const resolvers = {
       }
 
       // 3) Guardar el resultado del cobro (referencia de OXXO/SPEI, fecha límite, id del pago, etc.).
+      // El estado solo cambia si el pedido sigue pendiente: el webhook pudo llegar antes que esta respuesta
+      // (tarjeta aprobada al instante) y no hay que pisar su resultado.
       const pagado = cobro.estado === 'pagado';
       const actualizado = await pool.query(
         `UPDATE pedidos
-            SET status = $2::varchar, pago_id = $3, pago_referencia = $4, pago_url = $5, pago_expira = $6,
-                pagado_en = CASE WHEN $2::varchar = 'pagado' THEN NOW() ELSE NULL END
+            SET status = CASE WHEN status = 'pendiente' THEN $2::varchar ELSE status END,
+                pago_id = $3, pago_referencia = $4, pago_url = $5, pago_expira = $6,
+                pagado_en = CASE WHEN status = 'pendiente' AND $2::varchar = 'pagado' THEN NOW() ELSE pagado_en END
           WHERE id = $1 RETURNING *`,
         [pedido.id, pagado ? 'pagado' : 'pendiente', cobro.pagoId, cobro.referencia, cobro.url, cobro.expira]
       );
@@ -634,20 +756,21 @@ app.post('/webhooks/mercadopago', express.json({ limit: '100kb' }), async (req, 
     if (!verificarFirmaWebhook(req)) return res.sendStatus(401);
 
     const tipo = req.body?.type ?? req.query.type ?? req.query.topic;
-    const pagoId = String(req.body?.data?.id ?? req.query['data.id'] ?? '');
+    const pagoId = idDeNotificacion(req); // el mismo id que se firmó
     if (tipo !== 'payment' || !/^[\w-]{1,64}$/.test(pagoId)) return res.sendStatus(200);
 
-    const pago = await consultarPago(pagoId);
-    let pedidoId = pago.pedidoId;
-    if (!pedidoId) {
-      const fila = await pool.query('SELECT id FROM pedidos WHERE pago_id = $1', [pago.pagoId]);
-      pedidoId = fila.rows[0]?.id ?? null;
+    let pago;
+    try {
+      pago = await consultarPago(pagoId);
+    } catch (error) {
+      // El "simular notificación" del panel de Mercado Pago manda ids de prueba que no existen: no se reintentan.
+      if (error?.status === 404) {
+        console.warn(`Webhook: el pago ${pagoId} no existe en Mercado Pago (¿notificación de prueba?)`);
+        return res.sendStatus(200);
+      }
+      throw error;
     }
-    if (!pedidoId) {
-      console.warn(`Webhook: el pago ${pagoId} no corresponde a ningún pedido`);
-      return res.sendStatus(200);
-    }
-    await aplicarEstadoPago(pedidoId, pago.estado, pago.pagoId);
+    await procesarPagoMercadoPago(pago);
     return res.sendStatus(200);
   } catch (error) {
     console.error('Error en el webhook de Mercado Pago:', error);
@@ -679,7 +802,24 @@ console.log(
     : '💳 Pagos en modo REAL con Mercado Pago.'
 );
 
-// Libera el stock de pedidos de OXXO/SPEI vencidos: al arrancar y cada 10 minutos.
-const revisarExpirados = () => expirarPedidosVencidos().catch((e) => console.error('Error al expirar pedidos:', e.message));
-await revisarExpirados();
-setInterval(revisarExpirados, 10 * 60 * 1000).unref();
+// Mantenimiento periódico: primero se consulta a Mercado Pago por los pagos pendientes (por si se perdió un
+// aviso del webhook) y después se liberan las piezas de los pedidos vencidos. Al arrancar y cada 5 minutos.
+let mantenimientoEnCurso = false;
+const mantenimiento = async () => {
+  if (mantenimientoEnCurso) return;
+  mantenimientoEnCurso = true;
+  try {
+    await conciliarPagosPendientes();
+  } catch (e) {
+    console.error('Error al conciliar pagos:', e.message);
+  }
+  try {
+    await expirarPedidosVencidos();
+  } catch (e) {
+    console.error('Error al expirar pedidos:', e.message);
+  } finally {
+    mantenimientoEnCurso = false;
+  }
+};
+await mantenimiento();
+setInterval(mantenimiento, 5 * 60 * 1000).unref();

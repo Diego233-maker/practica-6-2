@@ -34,5 +34,12 @@ export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirec
   if (RUTAS_ADMIN.some((r) => coincide(url.pathname, r)) && locals.usuario?.rol !== 'admin') {
     return redirect('/');
   }
-  return next();
+
+  const respuesta = await next();
+  // Cabeceras básicas de endurecimiento. (No se fija una Content-Security-Policy aquí porque hay que
+  // permitir los dominios de Mercado Pago; ver la guía de seguridad antes de añadirla.)
+  respuesta.headers.set('X-Content-Type-Options', 'nosniff');
+  respuesta.headers.set('X-Frame-Options', 'DENY');
+  respuesta.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  return respuesta;
 });
