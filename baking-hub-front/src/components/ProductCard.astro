@@ -21,16 +21,17 @@ const { id, nombre, precio: valor, imagen, stock } = Astro.props;
 <style>
   .tarjeta-producto {
     background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border: 1px solid rgba(120, 94, 82, 0.08);
+    border-radius: var(--radius-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: box-shadow 0.15s ease, transform 0.15s ease;
+    box-shadow: var(--shadow-soft);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
   .tarjeta-producto:hover {
-    box-shadow: var(--shadow-soft);
+    box-shadow: 12px 12px 24px rgba(128, 103, 88, 0.2), -8px -8px 18px rgba(255,255,255,0.7);
     transform: translateY(-2px);
   }
 
@@ -55,7 +56,7 @@ const { id, nombre, precio: valor, imagen, stock } = Astro.props;
 
   .precio {
     margin: 0;
-    color: var(--honey-dark);
+    color: var(--primary-strong);
     font-weight: 600;
     font-size: 1.05rem;
   }
@@ -66,20 +67,21 @@ const { id, nombre, precio: valor, imagen, stock } = Astro.props;
     font-weight: 600;
   }
 
-  .existencia.agotado { color: var(--jam); }
-  .existencia.pocas { color: var(--honey-dark); }
+  .existencia.agotado { color: var(--error-text); }
+  .existencia.pocas { color: var(--primary-strong); }
 
   .ver-detalle-btn {
     margin-top: auto;
-    background: var(--cream);
-    color: var(--espresso);
-    padding: 0.55rem;
-    border-radius: 8px;
+    background: var(--soft-button-surface);
+    color: var(--text);
+    padding: 0.7rem 0.8rem;
+    border-radius: 14px;
     font-weight: 500;
     text-align: center;
     text-decoration: none;
-    transition: background 0.15s ease;
+    box-shadow: inset 2px 2px 5px rgba(255,255,255,0.75), inset -4px -4px 8px rgba(184, 154, 138, 0.18);
+    transition: transform 0.15s ease;
   }
 
-  .ver-detalle-btn:hover { background: var(--honey); }
+  .ver-detalle-btn:hover { transform: translateY(-1px); }
 </style>

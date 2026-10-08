@@ -5,22 +5,22 @@ export const METODOS: Record<MetodoPago, { etiqueta: string; descripcion: string
   tarjeta: {
     etiqueta: 'Tarjeta de crédito o débito',
     descripcion: 'Visa, Mastercard y American Express. Se cobra al instante.',
-    icono: '💳',
+    icono: 'VISA',
   },
   oxxo: {
     etiqueta: 'Efectivo en OXXO',
     descripcion: 'Genera una ficha y paga en caja en cualquier tienda OXXO.',
-    icono: '🏪',
+    icono: 'OXXO',
   },
   spei: {
     etiqueta: 'Transferencia SPEI',
     descripcion: 'Transfiere desde la app o la banca en línea de tu banco.',
-    icono: '🏦',
+    icono: 'SPEI',
   },
   mercadopago: {
     etiqueta: 'Mercado Pago',
     descripcion: 'Paga con tu saldo o con las tarjetas guardadas en tu cuenta.',
-    icono: '🤝',
+    icono: 'MP',
   },
 };
 

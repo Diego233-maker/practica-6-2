@@ -108,7 +108,7 @@ const pendiente = pedido?.status === 'pendiente';
         {pendiente && config?.modo === 'simulado' && (
           <form method="POST" class="simulador">
             <input type="hidden" name="accion" value="simular-pago" />
-            <p>🧪 Modo de pruebas: simula que ya realizaste el pago para ver cómo cambia el pedido.</p>
+            <p>Modo de pruebas: simula el pago para ver cómo cambia el estado del pedido.</p>
             <button class="btn-primario" type="submit">
               Simular pago recibido
             </button>

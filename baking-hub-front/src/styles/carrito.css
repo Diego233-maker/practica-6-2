@@ -13,7 +13,7 @@
   align-items: center;
   gap: 1rem;
   padding: 0.8rem 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(109, 88, 79, 0.12);
   font-size: 1.05rem;
 }
 
@@ -27,20 +27,21 @@
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 50%;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  color: var(--espresso);
+  background: var(--soft-button-surface);
+  border: 1px solid rgba(120, 94, 82, 0.08);
+  color: var(--text);
   font-size: 1rem;
   line-height: 1;
+  box-shadow: 4px 4px 10px rgba(128, 103, 88, 0.12), -4px -4px 10px rgba(255,255,255,0.7);
 }
 
 .carrito-cantidad button:hover {
-  background: var(--honey);
+  background: linear-gradient(135deg, var(--secondary), var(--primary));
 }
 
 .quitar-btn {
   background: none;
-  color: var(--jam);
+  color: var(--error-text);
   font-size: 0.9rem;
   text-decoration: underline;
   padding: 0;
@@ -67,29 +68,31 @@
 
 .checkout-card {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid rgba(120, 94, 82, 0.08);
+  border-radius: var(--radius-lg);
   padding: 1.75rem;
   max-width: 400px;
+  box-shadow: var(--shadow-soft);
 }
 
 .checkout-card p {
-  color: var(--espresso-soft);
+  color: var(--muted);
   margin: 0 0 1.25rem;
 }
 
 .pagar-btn {
   font-weight: 600;
   padding: 0.9rem;
-  border-radius: 8px;
+  border-radius: 18px;
   width: 100%;
-  color: var(--cream);
+  color: #fff;
+  box-shadow: 8px 8px 18px rgba(165, 118, 91, 0.18), -6px -6px 14px rgba(255,255,255,0.7);
 }
 
-.pagar-btn.activo { background: var(--honey-dark); }
+.pagar-btn.activo { background: linear-gradient(135deg, var(--primary), var(--primary-strong)); }
 
 .pagar-btn.procesando {
-  background: var(--espresso-soft);
+  background: linear-gradient(135deg, #bca89a, #967d70);
   cursor: not-allowed;
 }
 
@@ -100,12 +103,13 @@
   padding: 0.7rem;
   text-align: center;
   text-decoration: none;
-  color: var(--espresso-soft);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  color: var(--muted);
+  border: 1px solid rgba(111, 90, 79, 0.14);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.22);
 }
 
-.cancelar-btn:hover { background: var(--cream); }
+.cancelar-btn:hover { background: rgba(255,255,255,0.45); }
 
 @media (max-width: 520px) {
   .carrito-item { grid-template-columns: 1fr auto; }

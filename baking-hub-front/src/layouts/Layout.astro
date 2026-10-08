@@ -21,11 +21,43 @@ const title = titulo ? `${titulo} · Baking Hub` : 'Baking Hub';
     <script src="https://sdk.mercadopago.com/js/v2" is:inline></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script is:inline>
+      const applyStoredTheme = (theme) => {
+        document.documentElement.dataset.theme = theme;
+        document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(theme === 'dark'));
+        });
+      };
+
+      try {
+        const theme = localStorage.getItem('baking-hub-theme');
+        if (theme === 'light' || theme === 'dark') applyStoredTheme(theme);
+      } catch {}
+
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        const button = target instanceof Element ? target.closest('[data-theme-toggle]') : null;
+        if (!button) return;
+
+        const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        applyStoredTheme(theme);
+        try {
+          localStorage.setItem('baking-hub-theme', theme);
+        } catch {}
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+        document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(theme === 'dark'));
+        });
+      });
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&display=swap"
       rel="stylesheet"
     />
     <title>{title}</title>
@@ -49,16 +81,22 @@ const title = titulo ? `${titulo} · Baking Hub` : 'Baking Hub';
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    background: radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 38%);
   }
 
   .contenedor-central {
     display: flex;
     flex: 1;
+    max-width: 1220px;
+    width: min(1220px, calc(100% - 2rem));
+    margin: 0 auto;
+    gap: 1.5rem;
+    align-items: flex-start;
   }
 
   .main-content {
     flex: 1;
-    padding: 2rem 2.5rem;
+    padding: 2rem 0 2.5rem;
     max-width: 1100px;
   }
 
@@ -68,7 +106,7 @@ const title = titulo ? `${titulo} · Baking Hub` : 'Baking Hub';
   }
 
   @media (max-width: 768px) {
-    .contenedor-central { flex-direction: column; }
-    .main-content { padding: 1.5rem 1.25rem; }
+    .contenedor-central { flex-direction: column; width: min(100% - 1rem, 1220px); gap: 1rem; }
+    .main-content { padding: 1rem 0 2rem; }
   }
 </style>

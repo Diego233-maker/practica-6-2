@@ -105,7 +105,7 @@ export default function CheckoutView({ config, usuario }: Props) {
       <section className="checkout-main" aria-label="Método de pago">
         {config.modo === 'simulado' && (
           <p className="aviso-simulado" role="note">
-            🧪 <strong>Modo de pruebas.</strong> No se hará ningún cobro real.
+            <strong>Modo de pruebas.</strong> No se hará ningún cobro real.
           </p>
         )}
 
@@ -175,7 +175,7 @@ export default function CheckoutView({ config, usuario }: Props) {
         <a className="cancelar-btn" href="/carrito">
           Cancelar y regresar
         </a>
-        <p className="seguridad">🔒 Tus datos de pago los procesa Mercado Pago; Baking Hub nunca guarda tu tarjeta.</p>
+        <p className="seguridad">Mercado Pago procesa el pago. Baking Hub no almacena los datos de tu tarjeta.</p>
       </section>
 
       <aside className="checkout-resumen" aria-label="Resumen de tu orden">

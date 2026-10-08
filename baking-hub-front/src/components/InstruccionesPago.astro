@@ -18,7 +18,7 @@ const enlace = pedido.pagoUrl?.startsWith('https://') ? pedido.pagoUrl : null;
 {
   (esOxxo || esSpei) && (
     <section class="ficha" aria-label={esOxxo ? 'Ficha de pago OXXO' : 'Datos de transferencia SPEI'}>
-      <h3>{esOxxo ? '🏪 Paga en cualquier OXXO' : '🏦 Paga con transferencia SPEI'}</h3>
+      <h3>{esOxxo ? 'Paga en cualquier OXXO' : 'Paga con transferencia SPEI'}</h3>
 
       <dl>
         <div>
@@ -81,7 +81,7 @@ const enlace = pedido.pagoUrl?.startsWith('https://') ? pedido.pagoUrl : null;
 {
   esBilletera && (
     <section class="ficha" aria-label="Pago con Mercado Pago">
-      <h3>🤝 Completa tu pago en Mercado Pago</h3>
+      <h3>Completa tu pago en Mercado Pago</h3>
       <p>Tu pedido está apartado. Termina el pago desde tu cuenta de Mercado Pago.</p>
       {enlace && (
         <a class="btn-primario enlace-btn" href={enlace}>
@@ -109,7 +109,7 @@ const enlace = pedido.pagoUrl?.startsWith('https://') ? pedido.pagoUrl : null;
 
 <style>
   .ficha {
-    background: #fffaf0;
+    background: var(--panel);
     border: 1px dashed var(--honey-dark);
     border-radius: var(--radius);
     padding: 1.4rem 1.5rem;

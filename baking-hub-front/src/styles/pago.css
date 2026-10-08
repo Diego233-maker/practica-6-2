@@ -10,20 +10,21 @@
 
 .checkout-main,
 .checkout-resumen {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--panel-surface);
+  border: 1px solid rgba(120, 94, 82, 0.08);
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .checkout-main .pagar-btn { margin-top: 0.25rem; }
 
 /* ---------- Aviso modo simulado ---------- */
 .aviso-simulado {
-  background: #fff7e0;
-  border: 1px solid #ecd9a0;
-  color: #6b5210;
-  border-radius: 8px;
+  background: var(--warning-surface);
+  border: 1px solid rgba(121, 91, 58, 0.12);
+  color: var(--warning-text);
+  border-radius: 16px;
   padding: 0.75rem 1rem;
   margin: 0 0 1.25rem;
   font-size: 0.92rem;
@@ -41,7 +42,7 @@
 
 .metodos-leyenda {
   font-family: 'Fraunces', serif;
-  font-size: 1.15rem;
+  font-size: 1.22rem;
   padding: 0;
   margin-bottom: 0.75rem;
 }
@@ -51,31 +52,44 @@
   grid-template-columns: auto auto 1fr;
   align-items: center;
   gap: 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.8rem 1rem;
+  border: 1px solid rgba(120, 94, 82, 0.1);
+  border-radius: 18px;
+  padding: 0.9rem 1rem;
   cursor: pointer;
-  background: var(--cream);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: var(--option-surface);
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
-.metodo-opcion:hover { border-color: var(--honey); }
+.metodo-opcion:hover { border-color: rgba(199, 120, 90, 0.5); transform: translateY(-1px); }
 
 .metodo-opcion.activa {
-  border-color: var(--honey-dark);
-  background: #fff;
-  box-shadow: 0 0 0 1px var(--honey-dark);
+  border-color: var(--primary-strong);
+  background: var(--selected-option-surface);
+  box-shadow: 0 0 0 1px rgba(199,120,90,0.4);
 }
 
-.metodo-opcion input { accent-color: var(--honey-dark); }
+.metodo-opcion input { accent-color: var(--primary-strong); }
 
-.metodo-icono { font-size: 1.5rem; line-height: 1; }
+.metodo-icono {
+  display: grid;
+  place-items: center;
+  width: 3.1rem;
+  height: 2.7rem;
+  border-radius: 13px;
+  background: var(--icon-surface);
+  box-shadow: 4px 4px 9px rgba(128, 103, 88, 0.12), -3px -3px 8px rgba(255,255,255,0.65);
+  color: var(--primary-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
 
-.metodo-texto { display: flex; flex-direction: column; gap: 0.1rem; }
-.metodo-texto small { color: var(--espresso-soft); font-size: 0.85rem; }
+.metodo-texto { display: flex; flex-direction: column; gap: 0.18rem; min-width: 0; }
+.metodo-texto strong { font-size: 0.96rem; line-height: 1.35; }
+.metodo-texto small { color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
 
 .metodo-detalle {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(109, 88, 79, 0.12);
   padding-top: 1.25rem;
   margin-bottom: 1rem;
 }
@@ -86,53 +100,56 @@
 .campo-pago { display: flex; flex-direction: column; gap: 0.3rem; }
 
 .campo-pago label {
-  font-size: 0.9rem;
+  font-size: 0.94rem;
   font-weight: 500;
-  color: var(--espresso-soft);
+  color: var(--muted);
 }
 
 .campo-pago input {
   font: inherit;
+  font-size: 0.98rem;
   padding: 0.7rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--cream);
-  color: var(--espresso);
+  border: 1px solid rgba(111, 90, 79, 0.1);
+  border-radius: 14px;
+  background: var(--input-surface);
+  color: var(--text);
+  box-shadow: var(--shadow-inset);
 }
 
 .campo-pago input:focus {
-  outline: 2px solid var(--honey);
+  outline: 2px solid rgba(199,120,90,0.5);
   outline-offset: 1px;
-  background: #fff;
+  background: var(--surface);
 }
 
-.campo-pago input[aria-invalid='true'] { border-color: var(--jam); }
-.campo-error { color: var(--jam); font-size: 0.85rem; }
+.campo-pago input[aria-invalid='true'] { border-color: rgba(141, 74, 61, 0.55); }
+.campo-error { color: var(--error-text); font-size: 0.85rem; }
 
 /* Contenedores de los "Secure Fields" de Mercado Pago (iframes): sin altura propia se verían colapsados. */
 .mp-input-container {
   height: 2.75rem;
   padding: 0 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--cream);
+  border: 1px solid rgba(111, 90, 79, 0.1);
+  border-radius: 14px;
+  background: var(--input-surface);
+  box-shadow: var(--shadow-inset);
   display: flex;
   align-items: center;
 }
 
 .mp-input-container iframe { width: 100%; }
 
-.aviso-sdk { color: var(--jam); font-size: 0.9rem; margin: 0 0 0.6rem; }
+.aviso-sdk { color: var(--error-text); font-size: 0.9rem; margin: 0 0 0.6rem; }
 
 .fila-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
 
 /* ---------- Instrucciones OXXO / SPEI / Mercado Pago ---------- */
-.instrucciones p { margin: 0 0 0.6rem; color: var(--espresso); }
-.instrucciones ol { margin: 0 0 0.9rem; padding-left: 1.25rem; color: var(--espresso-soft); display: flex; flex-direction: column; gap: 0.3rem; }
-.instrucciones .nota { font-size: 0.9rem; color: var(--espresso-soft); }
+.instrucciones p { margin: 0 0 0.6rem; color: var(--text); }
+.instrucciones ol { margin: 0 0 0.9rem; padding-left: 1.25rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.3rem; }
+.instrucciones .nota { font-size: 0.9rem; color: var(--muted); }
 
-.pagador { color: var(--espresso-soft); font-size: 0.9rem; margin: 0 0 1rem; }
-.seguridad { color: var(--espresso-soft); font-size: 0.82rem; text-align: center; margin: 1rem 0 0; }
+.pagador { color: var(--muted); font-size: 0.9rem; margin: 0 0 1rem; }
+.seguridad { color: var(--muted); font-size: 0.84rem; line-height: 1.5; text-align: center; margin: 1rem 0 0; }
 
 /* ---------- Resumen ---------- */
 .checkout-resumen h3 { font-size: 1.15rem; margin-bottom: 0.9rem; }
@@ -144,8 +161,9 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 0.95rem;
+  border-bottom: 1px solid rgba(109, 88, 79, 0.12);
+  font-size: 0.96rem;
+  line-height: 1.45;
 }
 
 .resumen-linea,
@@ -153,11 +171,11 @@
   display: flex;
   justify-content: space-between;
   margin: 0.4rem 0;
-  color: var(--espresso-soft);
+  color: var(--muted);
 }
 
-.resumen-total { color: var(--espresso); font-size: 1.1rem; margin-top: 0.8rem; }
-.resumen-metodo { margin: 1rem 0 0; padding-top: 0.9rem; border-top: 1px solid var(--line); font-size: 0.92rem; color: var(--espresso-soft); }
+.resumen-total { color: var(--text); font-size: 1.1rem; margin-top: 0.8rem; }
+.resumen-metodo { margin: 1rem 0 0; padding-top: 0.9rem; border-top: 1px solid rgba(109, 88, 79, 0.12); font-size: 0.92rem; color: var(--muted); }
 
 @media (max-width: 860px) {
   .checkout-grid { grid-template-columns: 1fr; }

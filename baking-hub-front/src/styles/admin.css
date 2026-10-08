@@ -62,7 +62,7 @@ a.stat:hover { border-color: var(--honey); box-shadow: var(--shadow-soft); }
 }
 
 .campo-admin input:focus,
-.buscador input:focus { outline: 2px solid var(--honey); outline-offset: 1px; background: #fff; }
+.buscador input:focus { outline: 2px solid var(--honey); outline-offset: 1px; background: var(--surface); }
 
 .btn-admin {
   font: inherit;
@@ -79,8 +79,8 @@ a.stat:hover { border-color: var(--honey); box-shadow: var(--shadow-soft); }
 .btn-admin:hover { background: var(--honey-dark); color: var(--cream); }
 .btn-admin.sec { background: var(--cream); border: 1px solid var(--line); font-weight: 500; }
 .btn-admin.sec:hover { background: var(--line); color: var(--espresso); }
-.btn-admin.peligro { background: #fbeeea; color: var(--jam); border: 1px solid #eccbc0; font-weight: 500; }
-.btn-admin.peligro:hover { background: var(--jam); color: #fff; }
+.btn-admin.peligro { background: var(--error-surface); color: var(--error-text); border: 1px solid var(--line); font-weight: 500; }
+.btn-admin.peligro:hover { background: var(--danger-hover); color: #fff; }
 
 .form-inline { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
 .form-inline input[type='number'] { width: 5.5rem; font: inherit; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--cream); }
@@ -127,7 +127,7 @@ a.stat:hover { border-color: var(--honey); box-shadow: var(--shadow-soft); }
 .tabla-admin .acciones form { margin: 0; }
 .tabla-admin .acciones .fila { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .tabla-admin details form { margin-top: 0.7rem; display: flex; flex-direction: column; gap: 0.6rem; }
-.tabla-admin tr.suspendido td { background: #faf6f0; color: var(--espresso-soft); }
+.tabla-admin tr.suspendido td { background: var(--suspended-surface); color: var(--espresso-soft); }
 
 @media (max-width: 700px) {
   .producto-fila { grid-template-columns: 56px 1fr; }

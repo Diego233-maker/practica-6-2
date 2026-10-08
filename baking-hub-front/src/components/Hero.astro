@@ -5,28 +5,32 @@
 
 <style>
   .hero {
-    background: var(--espresso);
-    color: var(--cream);
-    padding: 3rem 2.5rem;
-    border-radius: var(--radius);
+    background: linear-gradient(118deg, #3c2f2a 0%, #67473b 58%, #80533f 100%);
+    color: #fff8f1;
+    padding: 3.25rem 2.5rem;
+    border-radius: var(--radius-lg);
     margin-bottom: 2rem;
+    box-shadow: 12px 14px 28px rgba(82, 57, 45, 0.2), inset 1px 1px 0 rgba(255,255,255,0.12);
   }
 
   .hero h2 {
     font-style: italic;
-    font-weight: 500;
-    font-size: 2.4rem;
-    color: var(--cream);
+    font-weight: 600;
+    font-size: 2.55rem;
+    color: #fff8f1;
+    max-width: 15ch;
   }
 
   .hero p {
     margin: 0.6rem 0 0;
-    font-size: 1.05rem;
-    color: var(--line);
+    max-width: 48ch;
+    font-size: 1.08rem;
+    line-height: 1.6;
+    color: rgba(255, 248, 241, 0.82);
   }
 
   @media (max-width: 768px) {
-    .hero { padding: 2rem 1.5rem; }
-    .hero h2 { font-size: 1.8rem; }
+    .hero { padding: 2.25rem 1.5rem; }
+    .hero h2 { font-size: 2rem; }
   }
 </style>

@@ -26,6 +26,10 @@ const primerNombre = usuario?.nombre.split(' ')[0];
         </>
       )
     }
+    <button class="theme-toggle" type="button" data-theme-toggle aria-label="Tema oscuro" aria-pressed="false" title="Cambiar tema">
+      <span>Oscuro</span>
+      <span class="theme-switch" aria-hidden="true"><span></span></span>
+    </button>
     <CartButton client:only="react">
       <a slot="fallback" class="cart-button" href="/carrito">Carrito</a>
     </CartButton>
@@ -34,16 +38,22 @@ const primerNombre = usuario?.nombre.split(' ')[0];
 
 <style>
   .top-bar {
-    background: var(--espresso);
-    color: var(--cream);
-    padding: 1rem 2rem;
+    width: min(1220px, calc(100% - 2rem));
+    margin: 1.25rem auto 0;
+    background: var(--header-surface);
+    color: var(--text);
+    padding: 1rem 1.4rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 1rem;
+    border-radius: 28px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--line);
     position: sticky;
-    top: 0;
+    top: 0.7rem;
     z-index: 10;
+    backdrop-filter: blur(8px);
   }
 
   .brand {
@@ -51,9 +61,10 @@ const primerNombre = usuario?.nombre.split(' ')[0];
     font-style: italic;
     font-weight: 500;
     font-size: 1.6rem;
-    color: var(--cream);
+    color: var(--text);
     text-decoration: none;
     letter-spacing: 0.2px;
+    white-space: nowrap;
   }
 
   .acciones {
@@ -66,15 +77,51 @@ const primerNombre = usuario?.nombre.split(' ')[0];
 
   .acciones form { margin: 0; }
 
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.42rem 0.62rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font: 600 0.82rem/1 var(--font-body);
+  }
+
+  .theme-switch {
+    display: inline-flex;
+    align-items: center;
+    width: 2rem;
+    height: 1.15rem;
+    padding: 0.15rem;
+    border-radius: 999px;
+    background: var(--surface-2);
+    box-shadow: var(--shadow-inset);
+    transition: background 0.2s ease;
+  }
+
+  .theme-switch > span {
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 50%;
+    background: var(--primary-strong);
+    transition: transform 0.2s ease;
+  }
+
+  .theme-toggle[aria-pressed='true'] .theme-switch { background: var(--primary-strong); }
+  .theme-toggle[aria-pressed='true'] .theme-switch > span { transform: translateX(0.85rem); background: #fff8f1; }
+  .theme-toggle:hover { border-color: var(--primary-strong); }
+
   .enlace {
-    color: var(--line);
+    color: var(--muted);
     text-decoration: none;
     font-size: 0.95rem;
   }
 
-  .enlace:hover { color: var(--honey); }
+  .enlace:hover { color: var(--primary-strong); }
 
-  .enlace-admin { color: var(--honey); font-weight: 600; }
+  .enlace-admin { color: var(--primary-strong); font-weight: 600; }
 
   .enlace-btn {
     background: none;
@@ -83,11 +130,17 @@ const primerNombre = usuario?.nombre.split(' ')[0];
   }
 
   .saludo {
-    color: var(--cream);
+    color: var(--text);
     font-size: 0.95rem;
   }
 
   @media (max-width: 768px) {
-    .top-bar { padding: 0.9rem 1.25rem; }
+    .top-bar { width: min(100% - 1rem, 1220px); padding: 0.9rem 1.1rem; }
+  }
+
+  @media (max-width: 520px) {
+    .top-bar { flex-wrap: wrap; justify-content: flex-start; gap: 0.7rem; }
+    .brand { font-size: 1.45rem; }
+    .acciones { flex: 1 1 100%; justify-content: flex-start; gap: 0.65rem 0.85rem; }
   }
 </style>
