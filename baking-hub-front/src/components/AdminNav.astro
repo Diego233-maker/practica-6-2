@@ -1,0 +1,59 @@
+---
+interface Props {
+  activa: 'resumen' | 'inventario' | 'usuarios';
+}
+
+const { activa } = Astro.props;
+const enlaces = [
+  { clave: 'resumen', href: '/admin', texto: 'Resumen' },
+  { clave: 'inventario', href: '/admin/inventario', texto: 'Inventario' },
+  { clave: 'usuarios', href: '/admin/usuarios', texto: 'Clientes' },
+] as const;
+---
+
+<nav class="admin-nav" aria-label="Panel de administración">
+  <span class="admin-nav-titulo">Panel admin</span>
+  {
+    enlaces.map((e) => (
+      <a href={e.href} class:list={['admin-enlace', { activa: activa === e.clave }]} aria-current={activa === e.clave ? 'page' : undefined}>
+        {e.texto}
+      </a>
+    ))
+  }
+</nav>
+
+<style>
+  .admin-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .admin-nav-titulo {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 1.3rem;
+    margin-right: 1rem;
+    color: var(--honey-dark);
+  }
+
+  .admin-enlace {
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--espresso-soft);
+    font-weight: 500;
+  }
+
+  .admin-enlace:hover { background: var(--surface); }
+
+  .admin-enlace.activa {
+    background: var(--honey);
+    color: var(--espresso);
+    font-weight: 600;
+  }
+</style>

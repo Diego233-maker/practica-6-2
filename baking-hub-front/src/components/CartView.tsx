@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import { cambiarCantidad, carrito, quitar, totalPrecio } from '../stores/carrito';
+import { cambiarCantidad, carrito, quitar, tope, totalPrecio } from '../stores/carrito';
 import { precio } from '../lib/format';
 import '../styles/carrito.css';
 
@@ -26,7 +26,12 @@ export default function CartView() {
                 −
               </button>
               <span aria-label={`Cantidad: ${item.cantidad}`}>{item.cantidad}</span>
-              <button aria-label={`Agregar una unidad de ${item.nombre}`} onClick={() => cambiarCantidad(item.id, 1)}>
+              <button
+                aria-label={`Agregar una unidad de ${item.nombre}`}
+                onClick={() => cambiarCantidad(item.id, 1)}
+                disabled={item.cantidad >= tope(item)}
+                title={item.cantidad >= tope(item) ? 'Alcanzaste el máximo disponible' : undefined}
+              >
                 +
               </button>
             </span>

@@ -4,7 +4,10 @@ import { graphql } from './lib/graphql';
 import { ME } from './lib/queries';
 import type { Usuario } from './types';
 
-const RUTAS_PROTEGIDAS = ['/checkout', '/pedidos'];
+const RUTAS_PROTEGIDAS = ['/checkout', '/pedidos', '/admin'];
+const RUTAS_ADMIN = ['/admin'];
+
+const coincide = (ruta: string, base: string) => ruta === base || ruta.startsWith(`${base}/`);
 
 export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirect }, next) => {
   const token = cookies.get(COOKIE_SESION)?.value ?? null;
@@ -22,9 +25,14 @@ export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirec
     }
   }
 
-  const protegida = RUTAS_PROTEGIDAS.some((r) => url.pathname === r || url.pathname.startsWith(`${r}/`));
+  const protegida = RUTAS_PROTEGIDAS.some((r) => coincide(url.pathname, r));
   if (protegida && !locals.usuario) {
     return redirect(`/login?next=${encodeURIComponent(url.pathname)}`);
+  }
+
+  // El panel de administración es solo para admins (el backend vuelve a comprobarlo en cada operación).
+  if (RUTAS_ADMIN.some((r) => coincide(url.pathname, r)) && locals.usuario?.rol !== 'admin') {
+    return redirect('/');
   }
   return next();
 });

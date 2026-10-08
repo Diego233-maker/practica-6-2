@@ -20,6 +20,28 @@ distintas:
   pedido (llave primaria duplicada). Ahora se guarda una `cantidad` por producto, el total se calcula
   en el servidor con los precios de la base de datos y todo ocurre en una transacción.
 
+## Pagos con Mercado Pago y panel de administración
+
+- **Checkout** (`/checkout`): el cliente elige entre tarjeta, **efectivo en OXXO**, transferencia SPEI o
+  cuenta de Mercado Pago. Para OXXO/SPEI se genera una ficha (`/pedidos/<id>`) con referencia, monto y fecha
+  límite; si no se paga a tiempo el pedido expira y las piezas regresan al inventario.
+- **Modo simulado** (`MP_MODO=simulado`, el valor por defecto): todas las pantallas funcionan **sin** llamar a
+  Mercado Pago. En tarjeta, un número que termine en `0002` se rechaza; en OXXO/SPEI el botón
+  "Simular pago recibido" marca el pedido como pagado.
+- **Integrar la API real**: solo hay que completar los `TODO(MERCADO PAGO)` en
+  `backend-practica-6-2/pagos.js` (`crearCobroMercadoPago`, `consultarPagoMercadoPago`) y
+  `baking-hub-front/src/lib/mercadopago-cliente.ts` (`tokenizarConMercadoPago`), llenar `MP_ACCESS_TOKEN`,
+  `MP_WEBHOOK_SECRET`, `BACKEND_PUBLIC_URL` y `PUBLIC_MP_PUBLIC_KEY`, y cambiar a `MP_MODO=real`.
+  El webhook ya existe en `POST /webhooks/mercadopago` (valida la firma y consulta el estado real del pago).
+- **Panel admin** (`/admin`, solo rol `admin`): resumen, **inventario** (agregar productos, reabastecer,
+  editar, eliminar) y **clientes** (buscar, editar, suspender/reactivar, eliminar). Para ser admin, pon tu
+  correo en `ADMIN_EMAIL` del `.env` del backend y regístrate con él.
+- **Inventario**: cada pedido aparta las piezas; si el pago falla, se cancela o expira, se devuelven. Al
+  arrancar, el backend agrega solo las columnas nuevas a una base existente (los productos viejos quedan con
+  20 piezas), así que no necesitas volver a cargar `db.sql`.
+- Después de actualizar, corre `npm install` en `backend-practica-6-2` (se agregaron `express` y
+  `@as-integrations/express5`).
+
 ## 1. Instalar PostgreSQL, Node.js y npm
 
 ```bash

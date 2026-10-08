@@ -15,6 +15,8 @@ const { producto } = Astro.props;
   <h2>{producto.nombre}</h2>
   <img src={producto.imagen} alt={producto.nombre} />
   <p class="detalle-precio">Precio: {precio(producto.precio)}</p>
+  {producto.stock <= 0 && <p class="existencia agotado">Producto agotado por ahora</p>}
+  {producto.stock > 0 && producto.stock <= 5 && <p class="existencia pocas">¡Solo quedan {producto.stock} piezas!</p>}
   <AddToCartButton client:only="react" producto={producto}>
     <button slot="fallback" class="btn-primario" disabled>Añadir al carrito</button>
   </AddToCartButton>
@@ -59,4 +61,12 @@ const { producto } = Astro.props;
     font-weight: 600;
     margin: 0 0 1.1rem;
   }
+
+  .existencia {
+    margin: -0.5rem 0 1.1rem;
+    font-weight: 600;
+  }
+
+  .existencia.agotado { color: var(--jam); }
+  .existencia.pocas { color: var(--honey-dark); }
 </style>

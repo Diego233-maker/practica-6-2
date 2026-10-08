@@ -1,0 +1,153 @@
+---
+// Gestión de clientes: buscar, editar, suspender/reactivar y eliminar. Ruta protegida (solo admin).
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Alert from '../../components/Alert.astro';
+import { graphql } from '../../lib/graphql';
+import { ACTUALIZAR_USUARIO, ADMIN_USUARIOS, CAMBIAR_ESTADO_USUARIO, ELIMINAR_USUARIO } from '../../lib/queries';
+import { ErrorFormulario, mensajeError, texto } from '../../lib/admin';
+import { precio } from '../../lib/format';
+import type { UsuarioAdmin } from '../../types';
+
+const token = Astro.locals.token;
+const AVISOS: Record<string, string> = {
+  actualizado: 'Datos del cliente actualizados.',
+  suspendido: 'Cuenta suspendida: el cliente ya no puede entrar ni comprar.',
+  reactivado: 'Cuenta reactivada.',
+  eliminado: 'Cliente eliminado. Sus pedidos se conservan en el historial.',
+};
+const aviso = AVISOS[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+const busqueda = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
+const volver = (ok: string) => `/admin/usuarios?ok=${ok}${busqueda ? `&q=${encodeURIComponent(busqueda)}` : ''}`;
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const datos = await Astro.request.formData();
+  const accion = texto(datos, 'accion');
+  const id = texto(datos, 'id');
+  try {
+    switch (accion) {
+      case 'actualizar':
+        await graphql(ACTUALIZAR_USUARIO, { id, nombre: texto(datos, 'nombre'), email: texto(datos, 'email') }, token);
+        return Astro.redirect(volver('actualizado'), 303);
+      case 'suspender':
+      case 'reactivar':
+        await graphql(CAMBIAR_ESTADO_USUARIO, { id, activo: accion === 'reactivar' }, token);
+        return Astro.redirect(volver(accion === 'suspender' ? 'suspendido' : 'reactivado'), 303);
+      case 'eliminar':
+        await graphql(ELIMINAR_USUARIO, { id }, token);
+        return Astro.redirect(volver('eliminado'), 303);
+      default:
+        throw new ErrorFormulario('Acción no reconocida.');
+    }
+  } catch (e) {
+    error = mensajeError(e);
+  }
+}
+
+let usuarios: UsuarioAdmin[] = [];
+try {
+  ({ adminUsuarios: usuarios } = await graphql<{ adminUsuarios: UsuarioAdmin[] }>(ADMIN_USUARIOS, { busqueda }, token));
+} catch (e) {
+  error ??= mensajeError(e);
+}
+
+const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { dateStyle: 'medium' });
+---
+
+<AdminLayout titulo="Clientes" seccion="usuarios">
+  <h2 class="admin-titulo">Clientes</h2>
+  <p class="admin-subtitulo">Consulta las cuentas de clientes, corrige sus datos o suspende el acceso.</p>
+
+  {aviso && <p class="mensaje-exito" role="status">{aviso}</p>}
+  {error && <Alert>{error}</Alert>}
+
+  <form method="GET" class="buscador" role="search">
+    <input type="search" name="q" value={busqueda} placeholder="Buscar por nombre o correo…" aria-label="Buscar cliente" />
+    <button class="btn-admin" type="submit">Buscar</button>
+    {busqueda && <a class="btn-admin sec" href="/admin/usuarios">Limpiar</a>}
+  </form>
+
+  {
+    usuarios.length === 0 && !error && (
+      <p class="estado-vacio">{busqueda ? 'Ningún cliente coincide con tu búsqueda.' : 'Todavía no hay clientes registrados.'}</p>
+    )
+  }
+
+  {
+    usuarios.length > 0 && (
+      <div class="tabla-wrap">
+        <table class="tabla-admin">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Registro</th>
+              <th class="num">Pedidos</th>
+              <th class="num">Total pagado</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {usuarios.map((u) => (
+              <tr class:list={{ suspendido: !u.activo }}>
+                <td>
+                  <strong>{u.nombre}</strong>
+                  <br />
+                  <small>{u.email}</small>
+                </td>
+                <td>{fecha(u.creado)}</td>
+                <td class="num">{u.pedidos}</td>
+                <td class="num">{precio(u.totalComprado)}</td>
+                <td>
+                  <span class={`badge ${u.activo ? 'badge-ok' : 'badge-error'}`}>{u.activo ? 'Activo' : 'Suspendido'}</span>
+                </td>
+                <td>
+                  <div class="acciones">
+                    <div class="fila">
+                      <form
+                        method="POST"
+                        data-confirmar={u.activo ? `¿Suspender la cuenta de ${u.nombre}? No podrá entrar ni comprar.` : undefined}
+                      >
+                        <input type="hidden" name="accion" value={u.activo ? 'suspender' : 'reactivar'} />
+                        <input type="hidden" name="id" value={u.id} />
+                        <button class="btn-admin sec" type="submit">
+                          {u.activo ? 'Suspender' : 'Reactivar'}
+                        </button>
+                      </form>
+                      <form method="POST" data-confirmar={`¿Eliminar a ${u.nombre}? Esta acción no se puede deshacer.`}>
+                        <input type="hidden" name="accion" value="eliminar" />
+                        <input type="hidden" name="id" value={u.id} />
+                        <button class="btn-admin peligro" type="submit">
+                          Eliminar
+                        </button>
+                      </form>
+                    </div>
+                    <details>
+                      <summary>Editar datos</summary>
+                      <form method="POST">
+                        <input type="hidden" name="accion" value="actualizar" />
+                        <input type="hidden" name="id" value={u.id} />
+                        <div class="campo-admin">
+                          <label for={`u-nombre-${u.id}`}>Nombre</label>
+                          <input id={`u-nombre-${u.id}`} name="nombre" value={u.nombre} minlength="2" maxlength="100" required />
+                        </div>
+                        <div class="campo-admin">
+                          <label for={`u-email-${u.id}`}>Correo</label>
+                          <input id={`u-email-${u.id}`} name="email" type="email" value={u.email} maxlength="254" required />
+                        </div>
+                        <button class="btn-admin" type="submit">
+                          Guardar
+                        </button>
+                      </form>
+                    </details>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+</AdminLayout>

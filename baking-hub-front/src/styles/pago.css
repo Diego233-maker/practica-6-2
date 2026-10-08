@@ -1,0 +1,150 @@
+/* Estilos de la isla de checkout (métodos de pago, formulario de tarjeta y resumen). */
+
+.checkout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.75rem;
+  align-items: start;
+  max-width: 920px;
+}
+
+.checkout-main,
+.checkout-resumen {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+.checkout-main .pagar-btn { margin-top: 0.25rem; }
+
+/* ---------- Aviso modo simulado ---------- */
+.aviso-simulado {
+  background: #fff7e0;
+  border: 1px solid #ecd9a0;
+  color: #6b5210;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+}
+
+/* ---------- Métodos de pago ---------- */
+.metodos-pago {
+  border: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.metodos-leyenda {
+  font-family: 'Fraunces', serif;
+  font-size: 1.15rem;
+  padding: 0;
+  margin-bottom: 0.75rem;
+}
+
+.metodo-opcion {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  background: var(--cream);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.metodo-opcion:hover { border-color: var(--honey); }
+
+.metodo-opcion.activa {
+  border-color: var(--honey-dark);
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--honey-dark);
+}
+
+.metodo-opcion input { accent-color: var(--honey-dark); }
+
+.metodo-icono { font-size: 1.5rem; line-height: 1; }
+
+.metodo-texto { display: flex; flex-direction: column; gap: 0.1rem; }
+.metodo-texto small { color: var(--espresso-soft); font-size: 0.85rem; }
+
+.metodo-detalle {
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Formulario de tarjeta ---------- */
+.tarjeta-form { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.campo-pago { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.campo-pago label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--espresso-soft);
+}
+
+.campo-pago input {
+  font: inherit;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cream);
+  color: var(--espresso);
+}
+
+.campo-pago input:focus {
+  outline: 2px solid var(--honey);
+  outline-offset: 1px;
+  background: #fff;
+}
+
+.campo-pago input[aria-invalid='true'] { border-color: var(--jam); }
+.campo-error { color: var(--jam); font-size: 0.85rem; }
+
+.fila-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+
+/* ---------- Instrucciones OXXO / SPEI / Mercado Pago ---------- */
+.instrucciones p { margin: 0 0 0.6rem; color: var(--espresso); }
+.instrucciones ol { margin: 0 0 0.9rem; padding-left: 1.25rem; color: var(--espresso-soft); display: flex; flex-direction: column; gap: 0.3rem; }
+.instrucciones .nota { font-size: 0.9rem; color: var(--espresso-soft); }
+
+.pagador { color: var(--espresso-soft); font-size: 0.9rem; margin: 0 0 1rem; }
+.seguridad { color: var(--espresso-soft); font-size: 0.82rem; text-align: center; margin: 1rem 0 0; }
+
+/* ---------- Resumen ---------- */
+.checkout-resumen h3 { font-size: 1.15rem; margin-bottom: 0.9rem; }
+
+.checkout-resumen ul { list-style: none; padding: 0; margin: 0 0 0.9rem; }
+
+.checkout-resumen li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.resumen-linea,
+.resumen-total {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.4rem 0;
+  color: var(--espresso-soft);
+}
+
+.resumen-total { color: var(--espresso); font-size: 1.1rem; margin-top: 0.8rem; }
+.resumen-metodo { margin: 1rem 0 0; padding-top: 0.9rem; border-top: 1px solid var(--line); font-size: 0.92rem; color: var(--espresso-soft); }
+
+@media (max-width: 860px) {
+  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-resumen { order: -1; }
+}

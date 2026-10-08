@@ -1,0 +1,183 @@
+---
+// Inventario: alta de productos, reabastecimiento, edición y baja. Ruta protegida (solo admin).
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Alert from '../../components/Alert.astro';
+import { graphql } from '../../lib/graphql';
+import {
+  ACTUALIZAR_PRODUCTO,
+  ADMIN_PRODUCTOS,
+  AJUSTAR_STOCK,
+  CREAR_PRODUCTO,
+  ELIMINAR_PRODUCTO,
+} from '../../lib/queries';
+import { ErrorFormulario, entero, mensajeError, nivelStock, numero, texto } from '../../lib/admin';
+import { precio } from '../../lib/format';
+import type { Producto } from '../../types';
+
+const token = Astro.locals.token;
+const AVISOS: Record<string, string> = {
+  creado: 'Producto agregado al inventario.',
+  actualizado: 'Producto actualizado.',
+  stock: 'Existencias actualizadas.',
+  eliminado: 'Producto eliminado del catálogo.',
+};
+const aviso = AVISOS[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+
+let error: string | null = null;
+let nuevo = { nombre: '', precio: '', imagen: '', stock: '' };
+
+if (Astro.request.method === 'POST') {
+  const datos = await Astro.request.formData();
+  const accion = texto(datos, 'accion');
+  try {
+    switch (accion) {
+      case 'crear': {
+        nuevo = { nombre: texto(datos, 'nombre'), precio: texto(datos, 'precio'), imagen: texto(datos, 'imagen'), stock: texto(datos, 'stock') };
+        await graphql(
+          CREAR_PRODUCTO,
+          {
+            nombre: nuevo.nombre,
+            precio: numero(datos, 'precio', 'El precio'),
+            imagen: nuevo.imagen,
+            stock: entero(datos, 'stock', 'El stock inicial'),
+          },
+          token,
+        );
+        return Astro.redirect('/admin/inventario?ok=creado', 303);
+      }
+      case 'actualizar': {
+        await graphql(
+          ACTUALIZAR_PRODUCTO,
+          {
+            id: texto(datos, 'id'),
+            nombre: texto(datos, 'nombre'),
+            precio: numero(datos, 'precio', 'El precio'),
+            imagen: texto(datos, 'imagen'),
+            stock: entero(datos, 'stock', 'El stock'),
+          },
+          token,
+        );
+        return Astro.redirect('/admin/inventario?ok=actualizado', 303);
+      }
+      case 'ajustar': {
+        const cantidad = entero(datos, 'cantidad', 'La cantidad');
+        if (cantidad <= 0) throw new ErrorFormulario('La cantidad a agregar debe ser mayor a 0.');
+        await graphql(AJUSTAR_STOCK, { id: texto(datos, 'id'), cantidad }, token);
+        return Astro.redirect('/admin/inventario?ok=stock', 303);
+      }
+      case 'eliminar': {
+        await graphql(ELIMINAR_PRODUCTO, { id: texto(datos, 'id') }, token);
+        return Astro.redirect('/admin/inventario?ok=eliminado', 303);
+      }
+      default:
+        throw new ErrorFormulario('Acción no reconocida.');
+    }
+  } catch (e) {
+    error = mensajeError(e);
+  }
+}
+
+let productos: Producto[] = [];
+try {
+  ({ adminProductos: productos } = await graphql<{ adminProductos: Producto[] }>(ADMIN_PRODUCTOS, {}, token));
+} catch (e) {
+  error ??= mensajeError(e);
+}
+---
+
+<AdminLayout titulo="Inventario" seccion="inventario">
+  <h2 class="admin-titulo">Inventario</h2>
+  <p class="admin-subtitulo">Da de alta productos nuevos y controla cuántas piezas hay de cada uno.</p>
+
+  {aviso && <p class="mensaje-exito" role="status">{aviso}</p>}
+  {error && <Alert>{error}</Alert>}
+
+  <section class="admin-bloque">
+    <h3>Agregar producto nuevo</h3>
+    <form method="POST" class="form-grid">
+      <input type="hidden" name="accion" value="crear" />
+      <div class="campo-admin">
+        <label for="n-nombre">Nombre</label>
+        <input id="n-nombre" name="nombre" value={nuevo.nombre} maxlength="100" required />
+      </div>
+      <div class="campo-admin">
+        <label for="n-precio">Precio (MXN)</label>
+        <input id="n-precio" name="precio" type="number" step="0.01" min="0.01" value={nuevo.precio} required />
+      </div>
+      <div class="campo-admin">
+        <label for="n-stock">Piezas iniciales</label>
+        <input id="n-stock" name="stock" type="number" step="1" min="0" value={nuevo.stock || '0'} required />
+      </div>
+      <div class="campo-admin ancho">
+        <label for="n-imagen">URL de la imagen</label>
+        <input id="n-imagen" name="imagen" type="url" placeholder="https://…" value={nuevo.imagen} maxlength="255" required />
+      </div>
+      <div class="ancho"><button class="btn-admin" type="submit">Agregar al inventario</button></div>
+    </form>
+  </section>
+
+  <h3 class="section-title">Productos ({productos.length})</h3>
+  {productos.length === 0 && !error && <p class="estado-vacio">Todavía no hay productos. Agrega el primero arriba.</p>}
+
+  <div class="lista-productos">
+    {
+      productos.map((p) => {
+        const nivel = nivelStock(p.stock);
+        return (
+          <article class="producto-fila">
+            <img src={p.imagen} alt={p.nombre} loading="lazy" />
+            <div>
+              <h4>{p.nombre}</h4>
+              <div class="producto-meta">
+                <span>{precio(p.precio)}</span>
+                <span class={`badge badge-${nivel.clase}`}>{nivel.etiqueta}</span>
+                <span>#{p.id}</span>
+              </div>
+            </div>
+
+            <div class="producto-acciones">
+              <form method="POST" class="form-inline">
+                <input type="hidden" name="accion" value="ajustar" />
+                <input type="hidden" name="id" value={p.id} />
+                <input type="number" name="cantidad" min="1" step="1" value="10" aria-label={`Piezas a agregar de ${p.nombre}`} required />
+                <button class="btn-admin" type="submit">+ Reabastecer</button>
+              </form>
+              <div class="fila">
+                <form method="POST" data-confirmar={`¿Eliminar "${p.nombre}" del catálogo?`}>
+                  <input type="hidden" name="accion" value="eliminar" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <button class="btn-admin peligro" type="submit">Eliminar</button>
+                </form>
+              </div>
+            </div>
+
+            <details>
+              <summary>Editar datos</summary>
+              <form method="POST" class="form-grid">
+                <input type="hidden" name="accion" value="actualizar" />
+                <input type="hidden" name="id" value={p.id} />
+                <div class="campo-admin">
+                  <label for={`e-nombre-${p.id}`}>Nombre</label>
+                  <input id={`e-nombre-${p.id}`} name="nombre" value={p.nombre} maxlength="100" required />
+                </div>
+                <div class="campo-admin">
+                  <label for={`e-precio-${p.id}`}>Precio (MXN)</label>
+                  <input id={`e-precio-${p.id}`} name="precio" type="number" step="0.01" min="0.01" value={p.precio} required />
+                </div>
+                <div class="campo-admin">
+                  <label for={`e-stock-${p.id}`}>Existencias</label>
+                  <input id={`e-stock-${p.id}`} name="stock" type="number" step="1" min="0" value={p.stock} required />
+                </div>
+                <div class="campo-admin ancho">
+                  <label for={`e-imagen-${p.id}`}>URL de la imagen</label>
+                  <input id={`e-imagen-${p.id}`} name="imagen" type="url" value={p.imagen} maxlength="255" required />
+                </div>
+                <div class="ancho"><button class="btn-admin" type="submit">Guardar cambios</button></div>
+              </form>
+            </details>
+          </article>
+        );
+      })
+    }
+  </div>
+</AdminLayout>

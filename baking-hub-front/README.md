@@ -47,3 +47,12 @@ src/
 2. `middleware.ts` corre en cada petición: si hay cookie, pregunta `me` al backend. Si el token venció o es falso, borra la cookie.
 3. Las rutas de `RUTAS_PROTEGIDAS` (en `middleware.ts`) redirigen a `/login?next=…` si no hay sesión. Para proteger otra ruta, agrégala a esa lista.
 4. Los permisos reales viven en el **backend** (crear pedidos requiere sesión; crear/eliminar productos requiere rol `admin`), no solo en la interfaz.
+
+## Pagos y panel admin (nuevo)
+
+| Ruta / archivo | Qué hace |
+|---|---|
+| `/checkout` + `components/CheckoutView.tsx` | Elegir método de pago (tarjeta, OXXO, SPEI, Mercado Pago) |
+| `lib/mercadopago-cliente.ts` | Tokeniza la tarjeta en el navegador (punto de integración con MP.js) |
+| `/pedidos/[id]` + `components/InstruccionesPago.astro` | Ficha de pago OXXO / SPEI y estado del pedido |
+| `/admin`, `/admin/inventario`, `/admin/usuarios` | Panel de administración (solo rol `admin`, ver `middleware.ts`) |

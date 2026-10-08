@@ -1,0 +1,73 @@
+---
+// Resumen del panel. La ruta /admin está protegida en src/middleware.ts (solo rol admin).
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import Alert from '../../components/Alert.astro';
+import { graphql, ApiError } from '../../lib/graphql';
+import { ADMIN_RESUMEN } from '../../lib/queries';
+import { precio } from '../../lib/format';
+import type { ResumenAdmin } from '../../types';
+
+let resumen: ResumenAdmin | null = null;
+let error: string | null = null;
+try {
+  ({ adminResumen: resumen } = await graphql<{ adminResumen: ResumenAdmin }>(ADMIN_RESUMEN, {}, Astro.locals.token));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
+---
+
+<AdminLayout titulo="Resumen" seccion="resumen">
+  <h2 class="admin-titulo">Resumen de la tienda</h2>
+  <p class="admin-subtitulo">Hola, {Astro.locals.usuario?.nombre}. Esto es lo más importante de hoy.</p>
+
+  {error && <Alert>{error}</Alert>}
+
+  {
+    resumen && (
+      <>
+        <div class="stats">
+          <div class="stat">
+            <span class="stat-valor">{precio(resumen.ventas)}</span>
+            <span class="stat-texto">Ventas cobradas</span>
+          </div>
+          <div class="stat">
+            <span class="stat-valor">{resumen.pedidosPagados}</span>
+            <span class="stat-texto">Pedidos pagados</span>
+          </div>
+          <div class="stat">
+            <span class="stat-valor">{resumen.pedidosPendientes}</span>
+            <span class="stat-texto">Pedidos pendientes de pago</span>
+          </div>
+          <a class="stat" href="/admin/inventario">
+            <span class="stat-valor">{resumen.productos}</span>
+            <span class="stat-texto">Productos en catálogo</span>
+          </a>
+          <a class:list={['stat', { alerta: resumen.sinStock > 0 }]} href="/admin/inventario">
+            <span class="stat-valor">{resumen.sinStock}</span>
+            <span class="stat-texto">Productos agotados</span>
+          </a>
+          <a class="stat" href="/admin/inventario">
+            <span class="stat-valor">{resumen.stockBajo}</span>
+            <span class="stat-texto">Con stock bajo (5 o menos)</span>
+          </a>
+          <a class="stat" href="/admin/usuarios">
+            <span class="stat-valor">{resumen.clientes}</span>
+            <span class="stat-texto">Clientes registrados</span>
+          </a>
+          <a class="stat" href="/admin/usuarios">
+            <span class="stat-valor">{resumen.clientesSuspendidos}</span>
+            <span class="stat-texto">Cuentas suspendidas</span>
+          </a>
+        </div>
+
+        <div class="admin-bloque">
+          <h3>Accesos rápidos</h3>
+          <p style="display:flex;gap:0.6rem;flex-wrap:wrap;margin:0">
+            <a class="btn-admin" href="/admin/inventario">Agregar inventario</a>
+            <a class="btn-admin sec" href="/admin/usuarios">Gestionar clientes</a>
+          </p>
+        </div>
+      </>
+    )
+  }
+</AdminLayout>

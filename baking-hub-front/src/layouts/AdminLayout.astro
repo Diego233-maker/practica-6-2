@@ -1,0 +1,26 @@
+---
+import Layout from './Layout.astro';
+import AdminNav from '../components/AdminNav.astro';
+import '../styles/admin.css';
+
+interface Props {
+  titulo: string;
+  seccion: 'resumen' | 'inventario' | 'usuarios';
+}
+
+const { titulo, seccion } = Astro.props;
+---
+
+<Layout titulo={`Admin · ${titulo}`}>
+  <AdminNav activa={seccion} />
+  <slot />
+</Layout>
+
+<script>
+  // Formularios con data-confirmar="¿Seguro…?" piden confirmación antes de enviarse.
+  document.addEventListener('submit', (evento) => {
+    const formulario = evento.target as HTMLFormElement;
+    const mensaje = formulario.dataset?.confirmar;
+    if (mensaje && !confirm(mensaje)) evento.preventDefault();
+  });
+</script>

@@ -107,3 +107,28 @@ a { color: inherit; }
   border: 1px solid #eccbc0;
   margin: 0 0 1rem;
 }
+
+/* Insignias de estado (pedidos, existencias, clientes) */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-ok { background: #e6f2e0; color: #2f5a22; }
+.badge-warn { background: #fdf0d3; color: #7d5410; }
+.badge-error { background: #fbeeea; color: var(--jam); }
+.badge-muted { background: #eee8dd; color: var(--espresso-soft); }
+
+/* Mensaje de éxito */
+.mensaje-exito {
+  background: #eef6ea;
+  border: 1px solid #c9dfbf;
+  color: #2f5a22;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  margin: 0 0 1rem;
+}

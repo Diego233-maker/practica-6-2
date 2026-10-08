@@ -110,3 +110,10 @@
 @media (max-width: 520px) {
   .carrito-item { grid-template-columns: 1fr auto; }
 }
+
+.carrito-cantidad button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.carrito-cantidad button:disabled:hover { background: var(--cream); }

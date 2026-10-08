@@ -12,6 +12,7 @@ const primerNombre = usuario?.nombre.split(' ')[0];
     {
       usuario ? (
         <>
+          {usuario.rol === 'admin' && <a class="enlace enlace-admin" href="/admin">Panel admin</a>}
           <a class="enlace" href="/pedidos">Mis pedidos</a>
           <span class="saludo">Hola, {primerNombre}</span>
           <form method="POST" action="/api/auth/logout">
@@ -72,6 +73,8 @@ const primerNombre = usuario?.nombre.split(' ')[0];
   }
 
   .enlace:hover { color: var(--honey); }
+
+  .enlace-admin { color: var(--honey); font-weight: 600; }
 
   .enlace-btn {
     background: none;

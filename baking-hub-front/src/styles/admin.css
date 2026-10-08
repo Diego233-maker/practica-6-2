@@ -1,0 +1,137 @@
+/* Estilos compartidos del panel de administración. */
+
+.admin-titulo { font-size: 1.6rem; margin-bottom: 0.4rem; }
+.admin-subtitulo { color: var(--espresso-soft); margin: 0 0 1.5rem; }
+
+.admin-bloque {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.admin-bloque > h3 { font-size: 1.15rem; margin-bottom: 1rem; }
+
+/* ---------- Tarjetas de resumen ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-decoration: none;
+}
+
+a.stat:hover { border-color: var(--honey); box-shadow: var(--shadow-soft); }
+.stat-valor { font-family: 'Fraunces', serif; font-size: 1.8rem; line-height: 1.1; }
+.stat-texto { color: var(--espresso-soft); font-size: 0.9rem; }
+.stat.alerta .stat-valor { color: var(--jam); }
+
+/* ---------- Formularios ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+  align-items: end;
+}
+
+.form-grid .ancho { grid-column: 1 / -1; }
+
+.campo-admin { display: flex; flex-direction: column; gap: 0.3rem; }
+.campo-admin label { font-size: 0.85rem; font-weight: 500; color: var(--espresso-soft); }
+
+.campo-admin input,
+.buscador input {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cream);
+  color: var(--espresso);
+  min-width: 0;
+}
+
+.campo-admin input:focus,
+.buscador input:focus { outline: 2px solid var(--honey); outline-offset: 1px; background: #fff; }
+
+.btn-admin {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--honey);
+  color: var(--espresso);
+  text-decoration: none;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.btn-admin:hover { background: var(--honey-dark); color: var(--cream); }
+.btn-admin.sec { background: var(--cream); border: 1px solid var(--line); font-weight: 500; }
+.btn-admin.sec:hover { background: var(--line); color: var(--espresso); }
+.btn-admin.peligro { background: #fbeeea; color: var(--jam); border: 1px solid #eccbc0; font-weight: 500; }
+.btn-admin.peligro:hover { background: var(--jam); color: #fff; }
+
+.form-inline { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
+.form-inline input[type='number'] { width: 5.5rem; font: inherit; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--cream); }
+
+.buscador { display: flex; gap: 0.6rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.buscador input { flex: 1; min-width: 220px; }
+
+/* ---------- Inventario (lista de productos) ---------- */
+.lista-productos { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.producto-fila {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  gap: 1rem;
+  align-items: center;
+}
+
+.producto-fila img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--cream); }
+.producto-fila h4 { margin: 0 0 0.25rem; font-size: 1.05rem; font-family: 'Inter', system-ui, sans-serif; }
+.producto-meta { color: var(--espresso-soft); font-size: 0.9rem; display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; }
+
+.producto-acciones { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-end; }
+.producto-acciones .fila { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
+.producto-acciones form { margin: 0; }
+
+.producto-fila details { grid-column: 1 / -1; border-top: 1px dashed var(--line); padding-top: 0.8rem; }
+.producto-fila summary,
+.tabla-admin summary { cursor: pointer; color: var(--honey-dark); font-weight: 600; font-size: 0.92rem; }
+.producto-fila details form { margin-top: 0.9rem; }
+
+/* ---------- Tabla de clientes ---------- */
+.tabla-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+
+.tabla-admin { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+.tabla-admin th { text-align: left; padding: 0.8rem 1rem; background: var(--cream); color: var(--espresso-soft); font-weight: 600; font-size: 0.82rem; white-space: nowrap; }
+.tabla-admin td { padding: 0.8rem 1rem; border-top: 1px solid var(--line); vertical-align: top; }
+.tabla-admin td small { color: var(--espresso-soft); }
+.tabla-admin .num { text-align: right; white-space: nowrap; }
+.tabla-admin .acciones { display: flex; flex-direction: column; gap: 0.5rem; min-width: 190px; }
+.tabla-admin .acciones form { margin: 0; }
+.tabla-admin .acciones .fila { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.tabla-admin details form { margin-top: 0.7rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.tabla-admin tr.suspendido td { background: #faf6f0; color: var(--espresso-soft); }
+
+@media (max-width: 700px) {
+  .producto-fila { grid-template-columns: 56px 1fr; }
+  .producto-fila img { width: 56px; height: 56px; }
+  .producto-acciones { grid-column: 1 / -1; align-items: stretch; }
+  .producto-acciones .fila { justify-content: flex-start; }
+}

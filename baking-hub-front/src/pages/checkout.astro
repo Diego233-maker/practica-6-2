@@ -2,11 +2,32 @@
 // Esta ruta está protegida por src/middleware.ts: solo entran usuarios con sesión.
 import Layout from '../layouts/Layout.astro';
 import CheckoutView from '../components/CheckoutView';
+import Alert from '../components/Alert.astro';
+import { graphql, ApiError } from '../lib/graphql';
+import { CONFIG_PAGOS } from '../lib/queries';
+import type { ConfigPagos } from '../types';
+
+const usuario = Astro.locals.usuario!;
+
+let config: ConfigPagos | null = null;
+let error: string | null = null;
+try {
+  ({ configPagos: config } = await graphql<{ configPagos: ConfigPagos }>(CONFIG_PAGOS));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
 ---
 
 <Layout titulo="Checkout" sidebar>
-  <h2 class="section-title">Resumen de orden</h2>
-  <CheckoutView client:only="react">
-    <p slot="fallback" class="estado-vacio">Cargando tu orden…</p>
-  </CheckoutView>
+  <h2 class="section-title">Finalizar compra</h2>
+  {error && <Alert>No pudimos cargar los métodos de pago: {error}</Alert>}
+  {
+    config && (
+      <CheckoutView client:only="react" config={config} usuario={{ nombre: usuario.nombre, email: usuario.email }}>
+        <p slot="fallback" class="estado-vacio">
+          Cargando tu orden…
+        </p>
+      </CheckoutView>
+    )
+  }
 </Layout>

@@ -1,5 +1,6 @@
 ---
 import { precio } from '../lib/format';
+import { METODOS, estadoPedido } from '../lib/pagos';
 import type { Pedido } from '../types';
 
 interface Props {
@@ -9,14 +10,17 @@ interface Props {
 
 const { pedido, destacado = false } = Astro.props;
 const fecha = new Date(pedido.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+const estado = estadoPedido(pedido.status);
+const metodo = pedido.metodoPago ? METODOS[pedido.metodoPago] : null;
+const porPagar = pedido.status === 'pendiente' && pedido.metodoPago !== null;
 ---
 
 <article class:list={['pedido', { destacado }]}>
   <header>
-    <h3>Pedido #{pedido.id}</h3>
-    <span class="estado">{pedido.status}</span>
+    <h3><a href={`/pedidos/${pedido.id}`}>Pedido #{pedido.id}</a></h3>
+    <span class={`badge badge-${estado.clase}`}>{estado.etiqueta}</span>
   </header>
-  <p class="fecha">{fecha}</p>
+  <p class="fecha">{fecha}{metodo && ` · ${metodo.etiqueta}`}</p>
   <ul>
     {
       pedido.productos.map((p) => (
@@ -28,6 +32,9 @@ const fecha = new Date(pedido.fecha).toLocaleString('es-MX', { dateStyle: 'mediu
     }
   </ul>
   <p class="total">Total: <strong>{precio(pedido.total)}</strong></p>
+  <p class="acciones">
+    <a href={`/pedidos/${pedido.id}`}>{porPagar ? 'Ver instrucciones de pago →' : 'Ver detalle →'}</a>
+  </p>
 </article>
 
 <style>
@@ -50,12 +57,17 @@ const fecha = new Date(pedido.fecha).toLocaleString('es-MX', { dateStyle: 'mediu
 
   h3 { font-size: 1.1rem; }
 
-  .estado {
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-transform: capitalize;
-    color: var(--honey-dark);
+  h3 a { text-decoration: none; }
+  h3 a:hover { color: var(--honey-dark); }
+
+  .acciones {
+    margin: 0.6rem 0 0;
+    text-align: right;
+    font-size: 0.92rem;
   }
+
+  .acciones a { color: var(--honey-dark); font-weight: 600; text-decoration: none; }
+  .acciones a:hover { text-decoration: underline; }
 
   .fecha {
     margin: 0.2rem 0 0.8rem;

@@ -4,7 +4,7 @@ import type { Producto } from '../types';
 
 type Props = Producto;
 
-const { id, nombre, precio: valor, imagen } = Astro.props;
+const { id, nombre, precio: valor, imagen, stock } = Astro.props;
 ---
 
 <article class="tarjeta-producto">
@@ -12,6 +12,8 @@ const { id, nombre, precio: valor, imagen } = Astro.props;
   <div class="tarjeta-producto-info">
     <h3>{nombre}</h3>
     <p class="precio">{precio(valor)}</p>
+    {stock <= 0 && <p class="existencia agotado">Agotado</p>}
+    {stock > 0 && stock <= 5 && <p class="existencia pocas">¡Solo quedan {stock}!</p>}
     <a class="ver-detalle-btn" href={`/producto/${id}`}>Ver detalles</a>
   </div>
 </article>
@@ -57,6 +59,15 @@ const { id, nombre, precio: valor, imagen } = Astro.props;
     font-weight: 600;
     font-size: 1.05rem;
   }
+
+  .existencia {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .existencia.agotado { color: var(--jam); }
+  .existencia.pocas { color: var(--honey-dark); }
 
   .ver-detalle-btn {
     margin-top: auto;

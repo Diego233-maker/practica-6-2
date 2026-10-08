@@ -1,0 +1,152 @@
+---
+import { precio } from '../lib/format';
+import { formatearFecha, formatearReferencia } from '../lib/pagos';
+import type { Pedido } from '../types';
+
+interface Props {
+  pedido: Pedido;
+}
+
+const { pedido } = Astro.props;
+const esOxxo = pedido.metodoPago === 'oxxo';
+const esSpei = pedido.metodoPago === 'spei';
+const esBilletera = pedido.metodoPago === 'mercadopago';
+// Solo se enlaza a Mercado Pago por https.
+const enlace = pedido.pagoUrl?.startsWith('https://') ? pedido.pagoUrl : null;
+---
+
+{
+  (esOxxo || esSpei) && (
+    <section class="ficha" aria-label={esOxxo ? 'Ficha de pago OXXO' : 'Datos de transferencia SPEI'}>
+      <h3>{esOxxo ? '🏪 Paga en cualquier OXXO' : '🏦 Paga con transferencia SPEI'}</h3>
+
+      <dl>
+        <div>
+          <dt>{esOxxo ? 'Referencia de pago' : 'CLABE interbancaria'}</dt>
+          <dd class="referencia" id="referencia-pago">
+            {pedido.pagoReferencia ? formatearReferencia(pedido.pagoReferencia) : 'Pendiente de generar'}
+          </dd>
+        </div>
+        <div>
+          <dt>Monto exacto a pagar</dt>
+          <dd class="monto">{precio(pedido.total)}</dd>
+        </div>
+        {
+          pedido.pagoExpira && (
+            <div>
+              <dt>Págalo antes del</dt>
+              <dd>{formatearFecha(pedido.pagoExpira)}</dd>
+            </div>
+          )
+        }
+      </dl>
+
+      {
+        pedido.pagoReferencia && (
+          <button class="copiar" type="button" data-copiar={pedido.pagoReferencia}>
+            Copiar {esOxxo ? 'referencia' : 'CLABE'}
+          </button>
+        )
+      }
+
+      <ol>
+        {
+          esOxxo ? (
+            <>
+              <li>Acude a cualquier tienda OXXO y dile al cajero que quieres hacer un pago de servicio con Mercado Pago.</li>
+              <li>Indica la referencia y paga el monto exacto en efectivo.</li>
+              <li>Conserva tu comprobante. Esta página mostrará “Pagado” en cuanto se acredite el pago.</li>
+            </>
+          ) : (
+            <>
+              <li>Abre la app o la banca en línea de tu banco y elige hacer una transferencia SPEI.</li>
+              <li>Captura la CLABE y transfiere el monto exacto.</li>
+              <li>Esta página mostrará “Pagado” en cuanto se acredite la transferencia.</li>
+            </>
+          )
+        }
+      </ol>
+
+      {
+        enlace && (
+          <a class="enlace-ficha" href={enlace} target="_blank" rel="noopener noreferrer">
+            Ver / imprimir ficha en Mercado Pago ↗
+          </a>
+        )
+      }
+    </section>
+  )
+}
+
+{
+  esBilletera && (
+    <section class="ficha" aria-label="Pago con Mercado Pago">
+      <h3>🤝 Completa tu pago en Mercado Pago</h3>
+      <p>Tu pedido está apartado. Termina el pago desde tu cuenta de Mercado Pago.</p>
+      {enlace && (
+        <a class="btn-primario enlace-btn" href={enlace}>
+          Ir a Mercado Pago
+        </a>
+      )}
+    </section>
+  )
+}
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copiar]').forEach((boton) => {
+    boton.addEventListener('click', async () => {
+      const original = boton.textContent;
+      try {
+        await navigator.clipboard.writeText(boton.dataset.copiar ?? '');
+        boton.textContent = '¡Copiado!';
+      } catch {
+        boton.textContent = 'No se pudo copiar';
+      }
+      setTimeout(() => (boton.textContent = original), 1800);
+    });
+  });
+</script>
+
+<style>
+  .ficha {
+    background: #fffaf0;
+    border: 1px dashed var(--honey-dark);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.5rem;
+    margin: 1.25rem 0;
+  }
+
+  h3 { font-size: 1.2rem; margin-bottom: 1rem; }
+
+  dl { margin: 0 0 1rem; display: grid; gap: 0.9rem; }
+
+  dt { font-size: 0.85rem; color: var(--espresso-soft); }
+
+  dd { margin: 0.15rem 0 0; font-weight: 600; }
+
+  .referencia {
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    font-size: 1.5rem;
+    letter-spacing: 0.06em;
+    word-break: break-all;
+  }
+
+  .monto { font-size: 1.3rem; color: var(--honey-dark); }
+
+  .copiar {
+    background: var(--espresso);
+    color: var(--cream);
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    font-weight: 500;
+    margin-bottom: 1.1rem;
+  }
+
+  .copiar:hover { background: var(--honey-dark); }
+
+  ol { margin: 0 0 1rem; padding-left: 1.25rem; color: var(--espresso-soft); display: flex; flex-direction: column; gap: 0.35rem; }
+
+  .enlace-ficha { color: var(--honey-dark); font-weight: 600; }
+
+  .enlace-btn { max-width: 280px; }
+</style>

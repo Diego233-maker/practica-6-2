@@ -1,0 +1,160 @@
+---
+// Detalle de un pedido: estado, productos e instrucciones de pago (OXXO / SPEI / Mercado Pago).
+// Esta ruta está protegida por src/middleware.ts: solo entran usuarios con sesión.
+import Layout from '../../layouts/Layout.astro';
+import Alert from '../../components/Alert.astro';
+import InstruccionesPago from '../../components/InstruccionesPago.astro';
+import { graphql, ApiError } from '../../lib/graphql';
+import { CONFIG_PAGOS, OBTENER_PEDIDO, SIMULAR_PAGO } from '../../lib/queries';
+import { METODOS, estadoPedido, formatearFecha } from '../../lib/pagos';
+import { precio } from '../../lib/format';
+import type { ConfigPagos, Pedido } from '../../types';
+
+const { id } = Astro.params;
+if (!id || !/^\d+$/.test(id)) return Astro.rewrite('/404');
+const token = Astro.locals.token;
+
+let error: string | null = null;
+
+// Solo en modo simulado: botón para "marcar como pagado" y probar el flujo de OXXO/SPEI sin Mercado Pago.
+if (Astro.request.method === 'POST') {
+  const datos = await Astro.request.formData();
+  if (datos.get('accion') === 'simular-pago') {
+    try {
+      await graphql(SIMULAR_PAGO, { pedidoId: id }, token);
+      return Astro.redirect(`/pedidos/${id}`, 303);
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : 'Error inesperado';
+    }
+  }
+}
+
+let pedido: Pedido | null = null;
+let config: ConfigPagos | null = null;
+try {
+  ({ pedido } = await graphql<{ pedido: Pedido | null }>(OBTENER_PEDIDO, { id }, token));
+  ({ configPagos: config } = await graphql<{ configPagos: ConfigPagos }>(CONFIG_PAGOS));
+} catch (e) {
+  error = e instanceof ApiError ? e.message : 'Error inesperado';
+}
+
+if (!pedido && !error) return Astro.rewrite('/404');
+
+const nuevo = Astro.url.searchParams.get('nuevo') === '1';
+const estado = pedido ? estadoPedido(pedido.status) : null;
+const pendiente = pedido?.status === 'pendiente';
+---
+
+<Layout titulo={pedido ? `Pedido #${pedido.id}` : 'Pedido'} sidebar>
+  <a class="volver" href="/pedidos">← Mis pedidos</a>
+  {error && <Alert>{error}</Alert>}
+
+  {
+    pedido && estado && (
+      <article class="pedido-detalle">
+        <header>
+          <h2 class="section-title">Pedido #{pedido.id}</h2>
+          <span class={`badge badge-${estado.clase}`}>{estado.etiqueta}</span>
+        </header>
+        <p class="meta">
+          {formatearFecha(pedido.fecha)}
+          {pedido.metodoPago && ` · ${METODOS[pedido.metodoPago].etiqueta}`}
+        </p>
+
+        {nuevo && pedido.status === 'pagado' && (
+          <p class="mensaje-exito" role="status">
+            ¡Pago aprobado! Gracias por tu compra, estamos preparando tu pedido.
+          </p>
+        )}
+        {nuevo && pendiente && (
+          <p class="mensaje-exito" role="status">
+            ¡Pedido creado! Apartamos tus productos; falta completar el pago con las instrucciones de abajo.
+          </p>
+        )}
+
+        {pendiente && <InstruccionesPago pedido={pedido} />}
+
+        {pedido.status === 'cancelado' && (
+          <p class="aviso">Este pedido fue cancelado y las piezas regresaron al inventario.</p>
+        )}
+        {pedido.status === 'expirado' && (
+          <p class="aviso">
+            Este pedido expiró porque no recibimos el pago a tiempo. Si todavía quieres los productos,{' '}
+            <a href="/">vuelve al catálogo</a> y haz un pedido nuevo.
+          </p>
+        )}
+
+        <ul class="lineas">
+          {pedido.productos.map((p) => (
+            <li>
+              <span>
+                {p.cantidad} × {p.nombre}
+              </span>
+              <span>{precio(p.precio * p.cantidad)}</span>
+            </li>
+          ))}
+        </ul>
+        <p class="total">
+          Total: <strong>{precio(pedido.total)}</strong>
+        </p>
+
+        {pendiente && config?.modo === 'simulado' && (
+          <form method="POST" class="simulador">
+            <input type="hidden" name="accion" value="simular-pago" />
+            <p>🧪 Modo de pruebas: simula que ya realizaste el pago para ver cómo cambia el pedido.</p>
+            <button class="btn-primario" type="submit">
+              Simular pago recibido
+            </button>
+          </form>
+        )}
+      </article>
+    )
+  }
+</Layout>
+
+<style>
+  .volver {
+    display: inline-block;
+    color: var(--espresso-soft);
+    text-decoration: none;
+    margin-bottom: 1rem;
+  }
+
+  .volver:hover { color: var(--espresso); }
+
+  .pedido-detalle {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    max-width: 640px;
+  }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+
+  .section-title { margin-bottom: 0.25rem; }
+
+  .meta { margin: 0 0 1.1rem; color: var(--espresso-soft); font-size: 0.92rem; }
+
+  .aviso { color: var(--espresso-soft); background: var(--cream); border-radius: 8px; padding: 0.8rem 1rem; }
+
+  .lineas { list-style: none; padding: 0; margin: 1.1rem 0 0; }
+
+  .lineas li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .total { text-align: right; margin: 0.8rem 0 0; }
+
+  .simulador {
+    margin-top: 1.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px dashed var(--line);
+  }
+
+  .simulador p { color: var(--espresso-soft); font-size: 0.9rem; margin: 0 0 0.7rem; }
+</style>
