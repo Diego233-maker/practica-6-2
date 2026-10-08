@@ -42,6 +42,7 @@
   --danger-hover: #914d43;
   --muted-surface: #eee2d7;
   --suspended-surface: #faf6f0;
+  --shadow-control: 4px 4px 9px rgba(128, 103, 88, 0.12), -3px -3px 8px rgba(255,255,255,0.65);
   --radius: 22px;
   --radius-lg: 28px;
   --shadow-soft: 10px 10px 22px rgba(128, 103, 88, 0.18), -10px -10px 22px rgba(255, 255, 255, 0.82);
@@ -86,6 +87,7 @@
   --suspended-surface: #28211e;
   --shadow-soft: 10px 10px 24px rgba(10, 7, 6, 0.45), -7px -7px 18px rgba(82, 61, 51, 0.22);
   --shadow-inset: inset 4px 4px 10px rgba(12,8,7,0.25), inset -4px -4px 10px rgba(255,238,226,0.035);
+  --shadow-control: 3px 4px 9px rgba(10, 7, 6, 0.28), -2px -2px 7px rgba(255,238,226,0.045);
 }
 
 /* ============ Base ============ */

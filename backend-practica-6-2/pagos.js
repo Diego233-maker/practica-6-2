@@ -62,6 +62,13 @@ if (MODO === 'real') {
 }
 const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN }) : null;
 
+if (MODO === 'real') {
+  console.log(
+    '💳 Mercado Pago: token y clave pública deben ser del MISMO entorno (ambas de prueba o ambas de producción).\n' +
+      '   Si ves "Unauthorized use of live credentials" (código 7), revisa PASO A PASO la sección de credenciales del README.'
+  );
+}
+
 // Mercado Pago pide la fecha ISO con zona horaria (México = -06:00).
 const fechaMP = (d) => new Date(d.getTime() - 6 * 3600_000).toISOString().replace('Z', '-06:00');
 if (METODOS_ACTIVOS.length === 0) {
@@ -201,7 +208,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
   // Billetera de Mercado Pago: se crea una preferencia y se redirige al cliente a init_point.
   if (metodo === 'mercadopago') {
     const expira = new Date(Date.now() + 2 * 3600_000); // el stock se libera si abandona el pago
-    const pref = await new Preference(mp).create({
+    const pref = await llamarMP(() => new Preference(mp).create({
       body: {
         items: [{ id: String(pedido.id), title: `Pedido #${pedido.id} - Baking Hub`, quantity: 1, unit_price: monto, currency_id: 'MXN' }],
         payer: { email: usuario.email },
@@ -217,7 +224,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
         expiration_date_to: fechaMP(expira),
       },
       requestOptions,
-    });
+    }));
     return { estado: 'pendiente', pagoId: null, referencia: null, expira, url: pref.init_point };
   }
 
@@ -245,7 +252,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
     });
   }
 
-  const pago = await new Payment(mp).create({ body, requestOptions });
+  const pago = await llamarMP(() => new Payment(mp).create({ body, requestOptions }));
   // console.log(JSON.stringify(pago, null, 2)); // descomenta la primera vez para ver la respuesta completa
 
   const estado = estadoDesdeMercadoPago(pago.status, pago.status_detail);
@@ -257,6 +264,33 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
     expira: pago.date_of_expiration ? new Date(pago.date_of_expiration) : null,
     url: td.external_resource_url ?? null,
   };
+}
+
+/**
+ * Ejecuta una llamada a Mercado Pago y, si falla, imprime un diagnóstico legible (status, código y causas)
+ * antes de relanzar el error. Así el log dice QUÉ revisar en vez de solo "MPAuthenticationError".
+ */
+async function llamarMP(fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    const causas = Array.isArray(error?.cause) ? error.cause : Array.isArray(error?.causes) ? error.causes : [];
+    const codigos = causas.map((c) => c?.code);
+    if (error?.status === 401 && codigos.includes(7)) {
+      console.error(
+        '❌ Mercado Pago rechazó las credenciales (401 / código 7: "Unauthorized use of live credentials").\n' +
+          '   Causas habituales:\n' +
+          '   1) Usas credenciales de PRODUCCIÓN pero tu aplicación aún no está activada para producción\n' +
+          '      (Tus integraciones → tu app → Credenciales de producción → completar y activar).\n' +
+          '   2) Usas credenciales de producción con un comprador/tarjeta de PRUEBA, o credenciales de prueba mezcladas\n' +
+          '      con las de producción (MP_ACCESS_TOKEN y PUBLIC_MP_PUBLIC_KEY deben ser del mismo entorno).\n' +
+          '   3) El comprador usa el mismo correo/cuenta que el vendedor dueño de las credenciales.'
+      );
+    } else {
+      console.error(`❌ Error de Mercado Pago (status ${error?.status ?? '?'}):`, JSON.stringify(causas.length ? causas : error?.message));
+    }
+    throw error;
+  }
 }
 
 /** Reduce un pago de Mercado Pago a los datos que usa Baking Hub. */
