@@ -1,71 +1,76 @@
 import type { ConfigPagos, TarjetaTokenizada } from '../types';
 
-/**
- * Tokenización de la tarjeta en el NAVEGADOR (lo único de Mercado Pago que vive en el frontend).
- *
- * Regla de oro: el número de la tarjeta y el CVV jamás se envían a nuestro servidor. Mercado Pago los
- * convierte en un `token` de un solo uso y solo ese token viaja al backend.
- *
- *  - modo "real":     los campos de número, vencimiento y CVV son "Secure Fields" de MP.js (iframes de Mercado Pago,
- *                     ver FormularioTarjeta.tsx). Aquí solo se pide el token con createCardToken().
- *  - modo "simulado": no se llama a Mercado Pago; se genera un token FALSO para poder probar las pantallas.
- */
-
 export interface DatosTarjeta {
   numero: string;
   titular: string;
-  /** MM/AA */
   vencimiento: string;
   cvv: string;
   paymentMethodId?: string;
 }
 
-export async function tokenizarTarjeta(datos: DatosTarjeta, modo: ConfigPagos['modo']): Promise<TarjetaTokenizada> {
-  return modo === 'real' ? tokenizarConMercadoPago(datos) : tokenizarSimulado(datos);
+interface CampoSeguro {
+  mount(selector: string): CampoMontado;
 }
 
-/** Detecta la marca por el inicio del número (solo para el modo simulado). */
-function marcaSimulada(numero: string): string {
-  if (/^3[47]/.test(numero)) return 'amex';
-  if (/^(5[1-5]|2[2-7])/.test(numero)) return 'master';
-  return 'visa';
+interface CampoMontado {
+  on(evento: 'binChange', callback: (resultado: { bin?: string }) => void): void;
+  unmount?: () => void;
 }
 
-async function tokenizarSimulado(datos: DatosTarjeta): Promise<TarjetaTokenizada> {
-  const numero = datos.numero.replace(/\D/g, '');
-  await new Promise((r) => setTimeout(r, 400)); // simula la llamada de red
-  return {
-    // Termina en los últimos 4 dígitos: el backend simulado rechaza las tarjetas que terminan en 0002.
-    token: `sim_${numero.slice(-4)}`,
-    paymentMethodId: marcaSimulada(numero),
-    cuotas: 1,
-  };
+interface CamposMercadoPago {
+  create(nombre: 'cardNumber' | 'expirationDate' | 'securityCode', opciones?: { placeholder?: string }): CampoSeguro;
+  createCardToken(datos: { cardholderName: string }): Promise<{ id?: string }>;
 }
 
-/** MP.js rechaza con un arreglo de { code, message } o con un Error; lo convertimos en un texto para el cliente. */
-function mensajeErrorMP(e: unknown): string {
-  const lista = Array.isArray(e) ? e : [e];
-  const textos = lista
-    .map((x) => (x && typeof x === 'object' && 'message' in x ? String((x as { message: unknown }).message) : ''))
-    .filter(Boolean);
-  return textos.length > 0
-    ? `Revisa los datos de tu tarjeta (${textos.join('; ')}).`
-    : 'No se pudo validar la tarjeta. Revisa los datos e inténtalo de nuevo.';
+export interface MercadoPagoInstance {
+  fields: CamposMercadoPago;
+  getPaymentMethods(datos: { bin: string }): Promise<{ results?: Array<{ id: string }> }>;
 }
 
-async function tokenizarConMercadoPago(datos: DatosTarjeta): Promise<TarjetaTokenizada> {
-  const mp = (window as any).mpInstance;
-  if (!mp) throw new Error('El formulario de pago todavía no está listo. Recarga la página e inténtalo de nuevo.');
-  if (!datos.paymentMethodId) throw new Error('No pudimos identificar tu tarjeta. Revisa el número e inténtalo de nuevo.');
-
-  let resultado: { id?: string } | undefined;
-  try {
-    // Los datos de la tarjeta los lee MP.js directamente de sus campos seguros; aquí solo va el nombre.
-    resultado = await mp.fields.createCardToken({ cardholderName: datos.titular.trim() });
-  } catch (e) {
-    throw new Error(mensajeErrorMP(e));
+declare global {
+  interface Window {
+    MercadoPago?: new (publicKey: string, opciones: { locale: string }) => MercadoPagoInstance;
+    mpInstance?: MercadoPagoInstance;
   }
-  if (!resultado?.id) throw new Error('No se pudo validar la tarjeta. Revisa los datos e inténtalo de nuevo.');
+}
 
-  return { token: resultado.id, paymentMethodId: datos.paymentMethodId, cuotas: 1 };
+const PUBLIC_KEY = import.meta.env.PUBLIC_MP_PUBLIC_KEY?.trim();
+
+export function obtenerMercadoPago(): MercadoPagoInstance {
+  if (!PUBLIC_KEY) {
+    throw new Error('Falta configurar PUBLIC_MP_PUBLIC_KEY en el frontend para aceptar pagos reales con tarjeta.');
+  }
+  if (typeof window === 'undefined' || !window.MercadoPago) {
+    throw new Error('No se pudo cargar el SDK de Mercado Pago. Revisa tu conexión e inténtalo de nuevo.');
+  }
+
+  window.mpInstance ??= new window.MercadoPago(PUBLIC_KEY, { locale: 'es-MX' });
+  return window.mpInstance;
+}
+
+export async function tokenizarTarjeta(
+  datos: DatosTarjeta,
+  modo: ConfigPagos['modo'],
+): Promise<TarjetaTokenizada> {
+  if (modo === 'simulado') return { token: 'sim_4242', paymentMethodId: 'visa', cuotas: 1 };
+  if (!datos.paymentMethodId) {
+    throw new Error('No pudimos identificar tu tarjeta. Revisa el número e inténtalo de nuevo.');
+  }
+
+  try {
+    const resultado = await obtenerMercadoPago().fields.createCardToken({ cardholderName: datos.titular.trim() });
+    if (!resultado.id) throw new Error('No se recibió un token de Mercado Pago.');
+    return { token: resultado.id, paymentMethodId: datos.paymentMethodId, cuotas: 1 };
+  } catch (error) {
+    if (error instanceof Error && error.message === 'No se recibió un token de Mercado Pago.') throw error;
+    const errores = Array.isArray(error) ? error : [error];
+    const mensajes = errores
+      .map((item) => (item && typeof item === 'object' && 'message' in item ? String(item.message) : ''))
+      .filter(Boolean);
+    throw new Error(
+      mensajes.length
+        ? `Revisa los datos de tu tarjeta (${mensajes.join('; ')}).`
+        : 'No se pudo validar la tarjeta. Revisa los datos e inténtalo de nuevo.',
+    );
+  }
 }

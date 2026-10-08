@@ -29,6 +29,10 @@ practica-6-2/
 
 Debes crear un archivo `.env` en cada carpeta del proyecto.
 
+Para una presentación sin credenciales, conserva `MP_MODO=simulado` en el backend (es el modo por
+defecto): tarjeta se confirma como simulada y OXXO/SPEI generan una referencia de prueba. No se
+realizan cobros reales ni se deben presentar esas referencias como válidas en una tienda.
+
 ### 1. Frontend (`baking-hub-front/.env`)
 
 Crea un archivo `.env` dentro de la carpeta `baking-hub-front/`:
@@ -45,8 +49,12 @@ PUBLIC_MP_PUBLIC_KEY=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Crea un archivo `.env` dentro de la carpeta `backend-practica-6-2/`:
 
 ``` env
-PORT=3000
+PORT=4000
+MP_MODO=real
 MP_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+MP_WEBHOOK_SECRET=xxxxxxxxxxxxxxxx
+BACKEND_PUBLIC_URL=https://tu-dominio-publico.example
+FRONTEND_URL=http://localhost:4321
 ```
 
 > ⚠️ **IMPORTANTE:**
@@ -60,6 +68,11 @@ MP_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 > -   **Cuentas de prueba:** No utilices la misma cuenta que generó las
 >     credenciales para intentar comprar en el sitio. Mercado Pago no
 >     permite compras a uno mismo ("autocobro").
+>
+> -   **Webhooks OXXO/SPEI:** para confirmar pagos inmediatamente, `BACKEND_PUBLIC_URL`
+>     debe ser HTTPS y accesible públicamente. Configura esa URL junto con
+>     `MP_WEBHOOK_SECRET` en Mercado Pago. Sin webhook, el backend concilia los
+>     pagos pendientes consultando Mercado Pago cada cinco minutos.
 
 ## 🚀 Paso 2: Instalación de Dependencias
 
@@ -115,8 +128,9 @@ Para probar el flujo de checkout sin hacer cargos reales:
 3.  Utiliza una **tarjeta de prueba oficial** suministrada en la
     [documentación de Mercado
     Pago](https://www.mercadopago.com.mx/developers/es/docs/checkout-api/landing/test-cards).
-4.  Asegúrate de iniciar sesión en la app con un correo electrónico
-    **diferente** al correo dueño de la cuenta de Mercado Pago.
+4.  En modo real, inicia sesión con un correo electrónico **diferente**
+    al correo dueño de la cuenta de Mercado Pago. En modo simulado no se
+    necesitan tarjetas ni credenciales.
 
 ## 🚨 Solución de Problemas Frecuentes
 
@@ -128,6 +142,6 @@ Para probar el flujo de checkout sin hacer cargos reales:
     `MP_ACCESS_TOKEN` de prueba (`TEST-...`) y no uno de producción
     (`APP_USR-...`).
 
--   **Los campos de la tarjeta no cargan:** Revisa que
-    `PUBLIC_MP_PUBLIC_KEY` esté bien declarada en el `.env` del frontend
-    y que hayas reiniciado el servidor Vite después de modificarla.
+-   **Los campos de la tarjeta no cargan en modo real:** Revisa que
+    `PUBLIC_MP_PUBLIC_KEY` corresponda al `MP_ACCESS_TOKEN`, que hayas
+    reiniciado Astro y que tengas conexión a `sdk.mercadopago.com`.

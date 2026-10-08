@@ -4,7 +4,7 @@ import { carrito, totalArticulos, totalPrecio, vaciar } from '../stores/carrito'
 import { precio } from '../lib/format';
 import { METODOS } from '../lib/pagos';
 import { tokenizarTarjeta, type DatosTarjeta } from '../lib/mercadopago-cliente';
-import { validarTarjeta, type ErroresTarjeta } from '../lib/tarjeta';
+import type { ErroresTarjeta } from '../lib/tarjeta';
 import type { ConfigPagos, MetodoPago, TarjetaTokenizada } from '../types';
 import MetodosPago from './MetodosPago';
 import FormularioTarjeta from './FormularioTarjeta';
@@ -41,15 +41,10 @@ export default function CheckoutView({ config, usuario }: Props) {
     setError(null);
     let datosTarjeta: TarjetaTokenizada | undefined;
 
-    if (metodo === 'tarjeta') {
-      // En modo real el número, vencimiento y CVV viven en iframes de Mercado Pago: aquí solo se valida el
-      // nombre y MP.js valida el resto al pedir el token. En modo simulado se validan todos los campos.
-      const errores: ErroresTarjeta =
-        config.modo === 'real'
-          ? tarjeta.titular.trim().length < 3
-            ? { titular: 'Escribe el nombre como aparece en la tarjeta.' }
-            : {}
-          : validarTarjeta(tarjeta);
+    if (metodo === 'tarjeta' && config.modo === 'real') {
+      const errores: ErroresTarjeta = tarjeta.titular.trim().length < 3
+        ? { titular: 'Escribe el nombre como aparece en la tarjeta.' }
+        : {};
       setErroresTarjeta(errores);
       if (Object.keys(errores).length > 0) return;
     }

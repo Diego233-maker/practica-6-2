@@ -59,6 +59,9 @@ if (MODO === 'real') {
   } else if (!BACKEND_PUBLIC_URL.startsWith('https://')) {
     console.warn('⚠️  BACKEND_PUBLIC_URL debería ser https://… (Mercado Pago exige HTTPS para las notificaciones).');
   }
+  if (!process.env.MP_WEBHOOK_SECRET) {
+    console.warn('⚠️  Falta MP_WEBHOOK_SECRET: se ignorarán los webhooks; la conciliación periódica seguirá consultando pagos pendientes.');
+  }
 }
 const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN }) : null;
 
@@ -160,7 +163,7 @@ function crearCobroSimulado({ metodo, tarjeta }) {
 }
 
 /* ------------------------------------------------------------------------------------------------
- * MODO REAL: aquí se integra Mercado Pago
+ * MODO REAL
  * -----------------------------------------------------------------------------------------------*/
 
 /**

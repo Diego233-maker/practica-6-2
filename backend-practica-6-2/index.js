@@ -84,6 +84,30 @@ try {
   console.error('   ¿Ya cargaste db.sql? (crea las tablas productos, pedidos y pedido_productos)');
 }
 
+const adminEmail = (process.env.ADMIN_EMAIL ?? '').trim().toLowerCase();
+if (adminEmail) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    console.error('❌ ADMIN_EMAIL no es un correo válido; no se asignó el rol de administrador.');
+  } else {
+    try {
+      const promovido = await pool.query(
+        "UPDATE usuarios SET rol = 'admin' WHERE lower(email) = $1 AND rol <> 'admin' RETURNING id",
+        [adminEmail]
+      );
+      if (promovido.rowCount > 0) {
+        console.log('✅ La cuenta configurada en ADMIN_EMAIL ahora tiene rol de administrador.');
+      } else {
+        const existente = await pool.query('SELECT 1 FROM usuarios WHERE lower(email) = $1', [adminEmail]);
+        if (existente.rowCount === 0) {
+          console.log('ℹ️ Registra una cuenta con el correo de ADMIN_EMAIL para habilitar el panel de administración.');
+        }
+      }
+    } catch (err) {
+      console.error('❌ No se pudo aplicar ADMIN_EMAIL a la cuenta existente:', err.message);
+    }
+  }
+}
+
 const TypeDefs = `#graphql
 type Producto {
   id: ID!

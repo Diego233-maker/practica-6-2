@@ -26,7 +26,7 @@ distintas:
   cuenta de Mercado Pago. Para OXXO/SPEI se genera una ficha (`/pedidos/<id>`) con referencia, monto y fecha
   límite; si no se paga a tiempo el pedido expira y las piezas regresan al inventario.
 - **Modo simulado** (`MP_MODO=simulado`, el valor por defecto): todas las pantallas funcionan **sin** llamar a
-  Mercado Pago. En tarjeta, un número que termine en `0002` se rechaza; en OXXO/SPEI el botón
+  Mercado Pago. En tarjeta el pedido se confirma como simulado, sin ingresar datos de tarjeta; en OXXO/SPEI el botón
   "Simular pago recibido" marca el pedido como pagado.
 - **Cobrar de verdad (incluye OXXO)**: la integración con Mercado Pago ya está hecha. Solo llena
   `MP_ACCESS_TOKEN` (y, si quieres confirmación inmediata de pagos en OXXO/SPEI, `BACKEND_PUBLIC_URL` +
