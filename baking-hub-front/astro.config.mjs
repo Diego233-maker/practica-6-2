@@ -8,6 +8,11 @@ export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
   integrations: [react()],
+  vite: {
+    server: {
+      allowedHosts: ['rinse-bless-licorice.ngrok-free.dev'],
+    },
+  },
   env: {
     schema: {
       // URL del backend GraphQL. Solo se usa en el servidor, nunca llega al navegador.

@@ -31,7 +31,10 @@ distintas:
 - **Cobrar de verdad (incluye OXXO)**: la integración con Mercado Pago ya está hecha. Solo llena
   `MP_ACCESS_TOKEN` (y, si quieres confirmación inmediata de pagos en OXXO/SPEI, `BACKEND_PUBLIC_URL` +
   `MP_WEBHOOK_SECRET`) en `backend-practica-6-2/.env`, `PUBLIC_MP_PUBLIC_KEY` en `baking-hub-front/.env`, y cambia
-  `MP_MODO=real`. Sin webhook, el backend consulta a Mercado Pago cada 5 minutos por los pagos pendientes.
+  `MP_MODO=real`. Configura también `FRONTEND_URL` con la URL HTTPS pública de Astro (por ejemplo, la URL ngrok del
+  puerto 4321): Checkout Pro regresará a `/pedidos/<id>` y volverá automáticamente cuando Mercado Pago apruebe el pago.
+  Si ese túnel solo apunta a Astro, deja `BACKEND_PUBLIC_URL` vacío; para webhooks inmediatos se necesita otro túnel
+  público al backend (puerto 4000). Sin webhook, el backend consulta a Mercado Pago cada 5 minutos por los pagos pendientes.
   El webhook es `POST /webhooks/mercadopago` (valida la firma `x-signature` y consulta el estado real del pago).
   Claves de prueba (`TEST-…`) y de producción (`APP_USR-…`) no se mezclan: usa el par del mismo entorno.
 - **Panel admin** (`/admin`, solo rol `admin`): resumen, **inventario** (agregar productos, reabastecer,

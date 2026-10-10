@@ -53,9 +53,15 @@ PORT=4000
 MP_MODO=real
 MP_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MP_WEBHOOK_SECRET=xxxxxxxxxxxxxxxx
-BACKEND_PUBLIC_URL=https://tu-dominio-publico.example
-FRONTEND_URL=http://localhost:4321
+BACKEND_PUBLIC_URL=https://url-publica-del-backend.example
+FRONTEND_URL=https://url-publica-de-astro.example
 ```
+
+`FRONTEND_URL` debe ser la URL HTTPS pública de Astro para que Mercado Pago vuelva al pedido y
+redirija automáticamente después de aprobar el pago. Si ngrok apunta solo al frontend, no uses esa
+misma URL como `BACKEND_PUBLIC_URL`: esa variable debe apuntar a un túnel del backend (puerto 4000).
+Si no tienes ese segundo túnel, deja `BACKEND_PUBLIC_URL` vacío; el backend consultará los pagos pendientes
+cada cinco minutos.
 
 > ⚠️ **IMPORTANTE:**
 >

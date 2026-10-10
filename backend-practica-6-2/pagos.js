@@ -222,7 +222,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
           pending: `${FRONTEND_URL}/pedidos/${pedido.id}?nuevo=1`,
           failure: `${FRONTEND_URL}/pedidos/${pedido.id}`,
         },
-        // auto_return: 'approved',  // actívalo cuando uses URLs https públicas (con localhost suele fallar)
+        ...(FRONTEND_URL.startsWith('https://') ? { auto_return: 'approved' } : {}),
         expires: true,
         expiration_date_to: fechaMP(expira),
       },
