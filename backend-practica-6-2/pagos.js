@@ -237,7 +237,12 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
     description: `Pedido #${pedido.id} - Baking Hub`,
     external_reference: String(pedido.id), // así el webhook sabe a qué pedido pertenece
     notification_url,
-    payer: { email: usuario.email, first_name: nombre, last_name: resto.join(' ') || nombre },
+    // Mercado Pago solo admite el correo del comprador de prueba al usar credenciales TEST-.
+    payer: {
+      email: process.env.MP_ACCESS_TOKEN.startsWith('TEST-') ? 'test@testuser.com' : usuario.email,
+      first_name: nombre,
+      last_name: resto.join(' ') || nombre,
+    },
   };
 
   if (metodo === 'tarjeta') {
