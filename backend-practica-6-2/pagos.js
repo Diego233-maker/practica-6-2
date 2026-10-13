@@ -211,23 +211,21 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
   // Billetera de Mercado Pago: se crea una preferencia y se redirige al cliente a init_point.
   if (metodo === 'mercadopago') {
     const expira = new Date(Date.now() + 2 * 3600_000); // el stock se libera si abandona el pago
-    const pref = await llamarMP(() => new Preference(mp).create({
-      body: {
-        items: [{ id: String(pedido.id), title: `Pedido #${pedido.id} - Baking Hub`, quantity: 1, unit_price: monto, currency_id: 'MXN' }],
-        payer: { email: usuario.email },
-        external_reference: String(pedido.id),
-        notification_url,
-        back_urls: {
-          success: `${FRONTEND_URL}/pedidos/${pedido.id}?nuevo=1`,
-          pending: `${FRONTEND_URL}/pedidos/${pedido.id}?nuevo=1`,
-          failure: `${FRONTEND_URL}/pedidos/${pedido.id}`,
-        },
-        ...(FRONTEND_URL.startsWith('https://') ? { auto_return: 'approved' } : {}),
-        expires: true,
-        expiration_date_to: fechaMP(expira),
+    const bodyPref = {
+      items: [{ id: String(pedido.id), title: `Pedido #${pedido.id} - Baking Hub`, quantity: 1, unit_price: monto, currency_id: 'MXN' }],
+      payer: { email: usuario.email },
+      external_reference: String(pedido.id),
+      notification_url,
+      back_urls: {
+        success: `${FRONTEND_URL}/pedidos/${pedido.id}?nuevo=1`,
+        pending: `${FRONTEND_URL}/pedidos/${pedido.id}?nuevo=1`,
+        failure: `${FRONTEND_URL}/pedidos/${pedido.id}`,
       },
-      requestOptions,
-    }));
+      ...(FRONTEND_URL.startsWith('https://') ? { auto_return: 'approved' } : {}),
+      expires: true,
+      expiration_date_to: fechaMP(expira),
+    };
+    const pref = await llamarMP(() => new Preference(mp).create({ body: bodyPref, requestOptions }), { metodo, body: bodyPref, requestOptions });
     return { estado: 'pendiente', pagoId: null, referencia: null, expira, url: pref.init_point };
   }
 
@@ -260,7 +258,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
     });
   }
 
-  const pago = await llamarMP(() => new Payment(mp).create({ body, requestOptions }));
+  const pago = await llamarMP(() => new Payment(mp).create({ body, requestOptions }), { metodo, body, requestOptions });
   // console.log(JSON.stringify(pago, null, 2)); // descomenta la primera vez para ver la respuesta completa
 
   const estado = estadoDesdeMercadoPago(pago.status, pago.status_detail);
@@ -278,7 +276,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
  * Ejecuta una llamada a Mercado Pago y, si falla, imprime un diagnóstico legible (status, código y causas)
  * antes de relanzar el error. Así el log dice QUÉ revisar en vez de solo "MPAuthenticationError".
  */
-async function llamarMP(fn) {
+async function llamarMP(fn, contexto = {}) {
   try {
     return await fn();
   } catch (error) {
@@ -297,8 +295,21 @@ async function llamarMP(fn) {
     } else {
       console.error(`❌ Error de Mercado Pago (status ${error?.status ?? '?'}):`, JSON.stringify(causas.length ? causas : error?.message));
     }
+    // Diagnóstico extra: qué método falló y qué se envió (sin el token de la tarjeta).
+    console.error('   Método:', contexto.metodo ?? '?');
+    console.error('   Body enviado:', JSON.stringify(ocultarSecretos(contexto.body), null, 2));
+    console.error('   Idempotency key:', contexto.requestOptions?.idempotencyKey ?? '-');
+    console.error('   Respuesta de MP:', JSON.stringify({ status: error?.status, message: error?.message, error: error?.error, causes: causas }));
     throw error;
   }
+}
+
+/** Copia del body para el log: el token de la tarjeta nunca se imprime. */
+function ocultarSecretos(body) {
+  if (!body || typeof body !== 'object') return body;
+  const copia = { ...body };
+  if (copia.token) copia.token = '***';
+  return copia;
 }
 
 /** Reduce un pago de Mercado Pago a los datos que usa Baking Hub. */
