@@ -13,6 +13,7 @@ export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirec
   const token = cookies.get(COOKIE_SESION)?.value ?? null;
   locals.token = token;
   locals.usuario = null;
+  let falloAlValidarSesion = false;
 
   if (token) {
     try {
@@ -20,12 +21,25 @@ export const onRequest = defineMiddleware(async ({ cookies, locals, url, redirec
       const { me } = await graphql<{ me: Usuario | null }>(ME, {}, token);
       if (me) locals.usuario = me;
       else cerrarSesion(cookies); // token vencido o de un usuario que ya no existe
-    } catch {
-      // Backend caído: seguimos como visitante sin borrar la cookie.
+    } catch (error) {
+      falloAlValidarSesion = true;
+      console.error('No se pudo validar la sesión con el backend:', error);
     }
   }
 
   const protegida = RUTAS_PROTEGIDAS.some((r) => coincide(url.pathname, r));
+  if (protegida && token && falloAlValidarSesion) {
+    return new Response('No pudimos validar tu sesión en este momento. Inténtalo de nuevo.', {
+      status: 503,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Retry-After': '5',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+      },
+    });
+  }
   if (protegida && !locals.usuario) {
     return redirect(`/login?next=${encodeURIComponent(url.pathname)}`);
   }

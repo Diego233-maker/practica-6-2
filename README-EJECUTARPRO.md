@@ -165,9 +165,11 @@ Para probar el flujo de checkout sin hacer cargos reales:
 
 ## 🚨 Solución de Problemas Frecuentes
 
--   `502 Bad Gateway` **al hacer el pago:** Verifica que el backend esté
-    ejecutándose en la Terminal 1 y respondiendo a las peticiones del
-    frontend.
+-   `502 Bad Gateway` **al hacer el pago:** Revisa el log de la Terminal 1
+    (backend). Si muestra `401: invalid access token`, reemplaza
+    `MP_ACCESS_TOKEN` en `backend-practica-6-2/.env` por un Access Token
+    vigente de la aplicación correcta y reinicia el backend. No uses la clave
+    pública como Access Token ni publiques el valor.
 
 -   `Unauthorized use of live credentials`: Asegúrate de estar usando un
     `MP_ACCESS_TOKEN` de prueba (`TEST-...`) y no uno de producción

@@ -686,6 +686,12 @@ const resolvers = {
               'No se generó la ficha; el pedido se canceló y el inventario fue liberado. Verifica la cuenta compradora de prueba antes de volver a intentarlo.'
           );
         }
+        if (error?.status === 401) {
+          throw new Error(
+            'Mercado Pago rechazó las credenciales (401). El pedido se canceló y el inventario fue liberado. ' +
+              'Revisa que MP_ACCESS_TOKEN sea un Access Token vigente de la aplicación correcta y reinicia el backend.'
+          );
+        }
         throw new Error('No pudimos procesar tu pago. Inténtalo de nuevo en un momento.');
       }
       if (cobro.estado === 'rechazado') {
