@@ -33,6 +33,9 @@ distintas:
   `MP_WEBHOOK_SECRET`) en `backend-practica-6-2/.env`, `PUBLIC_MP_PUBLIC_KEY` en `baking-hub-front/.env`, y cambia
   `MP_MODO=real`. Configura también `FRONTEND_URL` con la URL HTTPS pública de Astro (por ejemplo, la URL ngrok del
   puerto 4321): Checkout Pro regresará a `/pedidos/<id>` y volverá automáticamente cuando Mercado Pago apruebe el pago.
+  Con credenciales `TEST-`, crea/usa una cuenta compradora de prueba de la misma integración y configura su correo en
+  `MP_TEST_PAYER_EMAIL`; el backend lo usa como pagador para los cobros, incluida la billetera. Con credenciales
+  `APP_USR-` se usa el correo real del cliente. No uses un correo genérico como `test@testuser.com`.
   Si ese túnel solo apunta a Astro, deja `BACKEND_PUBLIC_URL` vacío; para webhooks inmediatos se necesita otro túnel
   público al backend (puerto 4000). Sin webhook, el backend consulta a Mercado Pago cada 5 minutos por los pagos pendientes.
   El webhook es `POST /webhooks/mercadopago` (valida la firma `x-signature` y consulta el estado real del pago).

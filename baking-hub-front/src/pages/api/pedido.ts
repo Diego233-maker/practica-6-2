@@ -54,11 +54,16 @@ export const POST: APIRoute = async ({ request, locals }) => {
       CREAR_PEDIDO,
       { productos, metodoPago, tarjeta },
       locals.token,
+      30_000,
     );
     return json({ pedido: crearPedido });
   } catch (e) {
     if (e instanceof ApiError) {
-      const status = e.codigo === 'UNAUTHENTICATED' ? 401 : e.codigo === 'BAD_USER_INPUT' ? 400 : 502;
+      const status =
+        e.codigo === 'UNAUTHENTICATED' ? 401 :
+        e.codigo === 'BAD_USER_INPUT' ? 400 :
+        e.codigo === 'TIMEOUT' ? 504 :
+        502;
       return json({ error: e.message }, status);
     }
     return json({ error: 'Error inesperado.' }, 500);

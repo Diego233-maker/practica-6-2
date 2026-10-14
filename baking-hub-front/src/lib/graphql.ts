@@ -14,6 +14,7 @@ export async function graphql<T>(
   query: string,
   variables: Record<string, unknown> = {},
   token?: string | null,
+  timeoutMs = 8000,
 ): Promise<T> {
   let res: Response;
   try {
@@ -24,9 +25,15 @@ export async function graphql<T>(
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ query, variables }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new ApiError(
+        'El pago está tardando más de lo esperado. Revisa “Mis pedidos” antes de volver a intentarlo.',
+        'TIMEOUT',
+      );
+    }
     throw new ApiError('No se pudo conectar con el servidor', 'NETWORK');
   }
 

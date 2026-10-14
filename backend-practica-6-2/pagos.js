@@ -33,6 +33,8 @@ export const HORAS_PARA_PAGAR = Number(process.env.PEDIDO_EXPIRA_HORAS) || 72;
 
 const FRONTEND_URL = (process.env.FRONTEND_URL ?? 'http://localhost:4321').replace(/\/$/, '');
 const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL ?? '').replace(/\/$/, '');
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN ?? '';
+const MP_TEST_PAYER_EMAIL = process.env.MP_TEST_PAYER_EMAIL?.trim() ?? '';
 
 // En simulado cualquier cliente puede "simular" que pagó (mutation simularPago): jamás en producción.
 if (MODO === 'simulado' && process.env.NODE_ENV === 'production') {
@@ -42,8 +44,13 @@ if (MODO === 'simulado' && process.env.NODE_ENV === 'production') {
 }
 
 if (MODO === 'real') {
-  if (!process.env.MP_ACCESS_TOKEN) {
+  if (!MP_ACCESS_TOKEN) {
     console.error('❌ MP_MODO=real pero falta MP_ACCESS_TOKEN en tu archivo .env');
+    process.exit(1);
+  }
+  if (MP_ACCESS_TOKEN.startsWith('TEST-') && !MP_TEST_PAYER_EMAIL) {
+    console.error('❌ MP_ACCESS_TOKEN es de prueba, pero falta MP_TEST_PAYER_EMAIL en tu archivo .env');
+    console.error('   Configura el correo de una cuenta compradora de prueba creada para esta integración.');
     process.exit(1);
   }
   if (BACKEND_PUBLIC_URL && !process.env.MP_WEBHOOK_SECRET) {
@@ -63,7 +70,7 @@ if (MODO === 'real') {
     console.warn('⚠️  Falta MP_WEBHOOK_SECRET: se ignorarán los webhooks; la conciliación periódica seguirá consultando pagos pendientes.');
   }
 }
-const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN }) : null;
+const mp = MODO === 'real' ? new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN }) : null;
 
 if (MODO === 'real') {
   console.log(
@@ -206,14 +213,14 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
   const monto = Number(pedido.total);
   const notification_url = BACKEND_PUBLIC_URL ? `${BACKEND_PUBLIC_URL}/webhooks/mercadopago` : undefined;
   const [nombre, ...resto] = usuario.nombre.trim().split(/\s+/);
-  const requestOptions = { idempotencyKey: `pedido-${pedido.id}-${metodo}` };
+  const requestOptions = { idempotencyKey: `pedido-${pedido.id}-${metodo}`, timeout: 12_000, retries: 1 };
 
   // Billetera de Mercado Pago: se crea una preferencia y se redirige al cliente a init_point.
   if (metodo === 'mercadopago') {
     const expira = new Date(Date.now() + 2 * 3600_000); // el stock se libera si abandona el pago
     const bodyPref = {
       items: [{ id: String(pedido.id), title: `Pedido #${pedido.id} - Baking Hub`, quantity: 1, unit_price: monto, currency_id: 'MXN' }],
-      payer: { email: usuario.email },
+      payer: { email: MP_ACCESS_TOKEN.startsWith('TEST-') ? MP_TEST_PAYER_EMAIL : usuario.email },
       external_reference: String(pedido.id),
       notification_url,
       back_urls: {
@@ -237,7 +244,7 @@ async function crearCobroMercadoPago({ pedido, usuario, metodo, tarjeta }) {
     notification_url,
     // Mercado Pago solo admite el correo del comprador de prueba al usar credenciales TEST-.
     payer: {
-      email: process.env.MP_ACCESS_TOKEN.startsWith('TEST-') ? 'test@testuser.com' : usuario.email,
+      email: MP_ACCESS_TOKEN.startsWith('TEST-') ? MP_TEST_PAYER_EMAIL : usuario.email,
       first_name: nombre,
       last_name: resto.join(' ') || nombre,
     },

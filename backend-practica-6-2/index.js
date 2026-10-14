@@ -628,6 +628,12 @@ const resolvers = {
       } catch (error) {
         console.error('Error al crear el cobro:', error);
         await cancelarPedido(pedido.id, 'cancelado');
+        if (Number.isInteger(error?.status) && error.status >= 500) {
+          throw new Error(
+            `Mercado Pago devolvió un error interno (${error.status}${error.message ? `: ${error.message}` : ''}). ` +
+              'No se generó la ficha; el pedido se canceló y el inventario fue liberado. Verifica la cuenta compradora de prueba antes de volver a intentarlo.'
+          );
+        }
         throw new Error('No pudimos procesar tu pago. Inténtalo de nuevo en un momento.');
       }
       if (cobro.estado === 'rechazado') {

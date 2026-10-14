@@ -52,6 +52,7 @@ Crea un archivo `.env` dentro de la carpeta `backend-practica-6-2/`:
 PORT=4000
 MP_MODO=real
 MP_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+MP_TEST_PAYER_EMAIL=correo-de-la-cuenta-compradora-de-prueba
 MP_WEBHOOK_SECRET=xxxxxxxxxxxxxxxx
 BACKEND_PUBLIC_URL=https://url-publica-del-backend.example
 FRONTEND_URL=https://url-publica-de-astro.example
@@ -74,6 +75,8 @@ cada cinco minutos.
 > -   **Cuentas de prueba:** No utilices la misma cuenta que generó las
 >     credenciales para intentar comprar en el sitio. Mercado Pago no
 >     permite compras a uno mismo ("autocobro").
+>     `MP_TEST_PAYER_EMAIL` debe ser el correo de una cuenta compradora de prueba
+>     creada para esta integración; no uses `test@testuser.com`.
 >
 > -   **Webhooks OXXO/SPEI:** para confirmar pagos inmediatamente, `BACKEND_PUBLIC_URL`
 >     debe ser HTTPS y accesible públicamente. Configura esa URL junto con
