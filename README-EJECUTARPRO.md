@@ -38,11 +38,15 @@ realizan cobros reales ni se deben presentar esas referencias como válidas en u
 Crea un archivo `.env` dentro de la carpeta `baking-hub-front/`:
 
 ``` env
+GRAPHQL_URL=http://localhost:4000/
+GRAPHQL_WS_URL=ws://localhost:4000/subscriptions
 PUBLIC_MP_PUBLIC_KEY=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
 > **Nota:** La clave pública debe ser la **Public Key de prueba**
 > obtenida en el panel de desarrolladores de Mercado Pago.
+> Para desarrollo local, conserva las dos URLs de GraphQL como están; no hace falta ngrok ni otro
+> servicio externo para que la suscripción funcione.
 
 ### 2. Backend (`backend-practica-6-2/.env`)
 
@@ -115,7 +119,7 @@ npm run dev
 node index.js
 ```
 
-*El servidor backend iniciará en `http://localhost:3000` (o el puerto
+*El servidor backend iniciará en `http://localhost:4000` (o el puerto
 configurado).*
 
 ### Terminal 2: Frontend
@@ -126,6 +130,24 @@ npm run dev
 ```
 
 *El frontend estará disponible en `http://localhost:4321`.*
+
+## 🔔 Actualización en tiempo real del panel admin
+
+Cuando un pago cambia a `pagado`, el backend publica `pedidoPagado` mediante GraphQL sobre WebSocket
+(`ws://localhost:4000/subscriptions`). El panel `/admin` escucha el evento y vuelve a consultar su
+resumen; los pedidos pendientes no se cuentan como ventas. La misma ruta cubre pagos simulados,
+webhooks y la conciliación periódica de Mercado Pago.
+
+En `/admin/usuarios`, la columna **Online** muestra si cada cliente está navegando con una pestaña
+visible: el navegador envía una señal cada 20 segundos y se marca como desconectado tras 50 segundos
+sin señal. Los cambios se difunden por `usuarioPresenciaActualizada`. El estado se guarda en memoria,
+así que está pensado para ejecutar una sola instancia del backend.
+
+En local basta con tener backend y frontend ejecutándose. Para que un frontend remoto se conecte,
+configura `GRAPHQL_WS_URL` en `baking-hub-front/.env` con la URL `wss://` pública del backend y la
+ruta `/subscriptions`. Un túnel como ngrok solo hace falta si necesitas que servicios externos
+lleguen al backend (por ejemplo, el webhook de Mercado Pago); no es necesario para probar esta
+suscripción en tu propia máquina.
 
 ## 💳 Pruebas de Pago
 

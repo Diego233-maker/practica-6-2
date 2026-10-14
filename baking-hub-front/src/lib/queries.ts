@@ -78,6 +78,24 @@ export const ADMIN_RESUMEN = `
   }
 `;
 
+export const PEDIDO_PAGADO_SUBSCRIPTION = `
+  subscription PedidoPagado {
+    pedidoPagado { pedidoId total pagadoEn }
+  }
+`;
+
+export const REGISTRAR_PRESENCIA = `
+  mutation RegistrarPresencia {
+    registrarPresencia
+  }
+`;
+
+export const USUARIO_PRESENCIA_SUBSCRIPTION = `
+  subscription UsuarioPresenciaActualizada {
+    usuarioPresenciaActualizada { usuarioId online }
+  }
+`;
+
 export const ADMIN_PRODUCTOS = `
   query AdminProductos {
     adminProductos { id nombre precio imagen stock }
@@ -87,7 +105,7 @@ export const ADMIN_PRODUCTOS = `
 export const ADMIN_USUARIOS = `
   query AdminUsuarios($busqueda: String) {
     adminUsuarios(busqueda: $busqueda) {
-      id nombre email rol activo creado pedidos totalComprado
+      id nombre email rol activo creado pedidos totalComprado online
     }
   }
 `;

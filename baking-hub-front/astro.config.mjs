@@ -21,6 +21,12 @@ export default defineConfig({
         access: 'secret',
         default: 'http://localhost:4000/',
       }),
+      // Solo lo utiliza el proxy SSE del servidor Astro para escuchar las suscripciones GraphQL.
+      GRAPHQL_WS_URL: envField.string({
+        context: 'server',
+        access: 'secret',
+        default: 'ws://localhost:4000/subscriptions',
+      }),
     },
   },
 });

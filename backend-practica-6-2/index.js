@@ -1,10 +1,14 @@
 import 'dotenv/config';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@as-integrations/express5';
+import { PubSub } from 'graphql-subscriptions'; // para el pubsub de pedidos pagados
+import { makeExecutableSchema } from '@graphql-tools/schema'; // para poder usar el pubsub en resolvers
 import express from 'express';
 import http from 'node:http';
 import { GraphQLError } from 'graphql';
-import pkg from 'pg';
+import { useServer } from 'graphql-ws/lib/use/ws';// para el WebSocket de suscripciones
+import pkg from 'pg';// para la conexión a PostgreSQL
+import { WebSocketServer } from 'ws';
 import {
   errorDeUsuario,
   errorNoAutenticado,
@@ -27,6 +31,11 @@ import {
 } from './pagos.js';
 
 const { Pool } = pkg;
+const pubsub = new PubSub(); // para publicar los eventos de pedido pagado a los suscriptores
+const PEDIDO_PAGADO = 'PEDIDO_PAGADO';// nombre del evento de suscripción
+const PRESENCIA_USUARIO_ACTUALIZADA = 'PRESENCIA_USUARIO_ACTUALIZADA';
+const usuariosEnLinea = new Map();
+const PRESENCIA_TIMEOUT_MS = 50_000;
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
@@ -133,6 +142,7 @@ type UsuarioAdmin {
   creado: String!
   pedidos: Int!
   totalComprado: Float!
+  online: Boolean!
 }
 
 type AuthPayload {
@@ -176,6 +186,19 @@ type ResumenAdmin {
   ventas: Float!
 }
 
+# Evento emitido cuando se confirma el pago de un pedido.
+type EventoPedidoPagado {
+  pedidoId: ID!
+  total: Float!
+  pagadoEn: String!
+}
+
+# Evento emitido cuando cambia la presencia de un cliente.
+type EventoPresenciaUsuario {
+  usuarioId: ID!
+  online: Boolean!
+}
+
 input TarjetaInput {
   token: String!
   paymentMethodId: String
@@ -202,6 +225,7 @@ type Mutation {
 
   crearPedido(productos: [ID!]!, metodoPago: String!, tarjeta: TarjetaInput): Pedido
   simularPago(pedidoId: ID!): Pedido
+  registrarPresencia: Boolean!
 
   crearProducto(nombre: String!, precio: Float!, imagen: String!, stock: Int = 0): Producto
   actualizarProducto(id: ID!, nombre: String!, precio: Float!, imagen: String!, stock: Int!): Producto
@@ -211,6 +235,11 @@ type Mutation {
   actualizarUsuario(id: ID!, nombre: String!, email: String!): UsuarioAdmin
   cambiarEstadoUsuario(id: ID!, activo: Boolean!): UsuarioAdmin
   eliminarUsuario(id: ID!): String
+}
+
+type Subscription {
+  pedidoPagado: EventoPedidoPagado!
+  usuarioPresenciaActualizada: EventoPresenciaUsuario!
 }
 `;
 
@@ -226,6 +255,14 @@ const requiereAdmin = (ctx) => {
 };
 
 const USUARIO_PUBLICO = 'id, nombre, email, rol';
+
+async function usuarioDesdeAutorizacion(authorization) { // para el contexto de Apollo Server
+  const id = idDesdeRequest({ headers: { authorization: typeof authorization === 'string' ? authorization : '' } });// devuelve null si no hay token o es inválido
+  if (!id) return null;
+  const res = await pool.query(`SELECT ${USUARIO_PUBLICO} FROM usuarios WHERE id = $1 AND activo`, [id]);// solo devuelve usuarios activos
+  return res.rows[0] ?? null;
+}
+
 const STOCK_BAJO = 5;
 
 // Un pedido pendiente de OXXO/SPEI aparta piezas hasta 72 h: se limita cuántos puede tener un cliente a la vez.
@@ -314,9 +351,20 @@ async function aplicarEstadoPago(pedidoId, estado, pagoId = null) {
     case 'pagado': {
       const res = await pool.query(
         `UPDATE pedidos SET status = 'pagado', pagado_en = NOW(), pago_id = COALESCE($2, pago_id)
-          WHERE id = $1 AND status = 'pendiente'`,
+          WHERE id = $1 AND status = 'pendiente'
+          RETURNING id, total, pagado_en`,
         [pedidoId, pagoId]
       );
+      if (res.rowCount > 0) { // el pedido pasó de pendiente a pagado
+        const pedido = res.rows[0];
+        await pubsub.publish(PEDIDO_PAGADO, { // notifica a los suscriptores
+          pedidoPagado: {// el nombre del campo de la suscripción
+            pedidoId: String(pedido.id),// se envía como string
+            total: Number(pedido.total),// se envía como float
+            pagadoEn: pedido.pagado_en.toISOString(),// se envía como string ISO 8601
+          },
+        });
+      }
       if (res.rowCount === 0) {
         const actual = await pool.query('SELECT status FROM pedidos WHERE id = $1', [pedidoId]);
         const status = actual.rows[0]?.status;
@@ -504,6 +552,10 @@ const resolvers = {
   UsuarioAdmin: {
     creado: (u) => new Date(u.creado).toISOString(),
     totalComprado: (u) => u.total_comprado ?? 0,
+    online: (u) => {
+      const ultimaActividad = usuariosEnLinea.get(String(u.id));
+      return ultimaActividad != null && Date.now() - ultimaActividad <= PRESENCIA_TIMEOUT_MS;
+    },
   },
 
   Pedido: {
@@ -644,16 +696,14 @@ const resolvers = {
       // 3) Guardar el resultado del cobro (referencia de OXXO/SPEI, fecha límite, id del pago, etc.).
       // El estado solo cambia si el pedido sigue pendiente: el webhook pudo llegar antes que esta respuesta
       // (tarjeta aprobada al instante) y no hay que pisar su resultado.
-      const pagado = cobro.estado === 'pagado';
-      const actualizado = await pool.query(
+      await pool.query(
         `UPDATE pedidos
-            SET status = CASE WHEN status = 'pendiente' THEN $2::varchar ELSE status END,
-                pago_id = $3, pago_referencia = $4, pago_url = $5, pago_expira = $6,
-                pagado_en = CASE WHEN status = 'pendiente' AND $2::varchar = 'pagado' THEN NOW() ELSE pagado_en END
-          WHERE id = $1 RETURNING *`,
-        [pedido.id, pagado ? 'pagado' : 'pendiente', cobro.pagoId, cobro.referencia, cobro.url, cobro.expira]
+            SET pago_id = COALESCE($2, pago_id), pago_referencia = $3, pago_url = $4, pago_expira = $5
+          WHERE id = $1`,
+        [pedido.id, cobro.pagoId, cobro.referencia, cobro.url, cobro.expira]
       );
-      return actualizado.rows[0];
+      if (cobro.estado === 'pagado') await aplicarEstadoPago(pedido.id, 'pagado', cobro.pagoId);
+      return (await pool.query('SELECT * FROM pedidos WHERE id = $1', [pedido.id])).rows[0];
     },
 
     /** Solo en modo simulado: marca como pagado un pedido pendiente (para probar OXXO/SPEI sin Mercado Pago). */
@@ -666,6 +716,22 @@ const resolvers = {
       if (!pedido) throw errorDeUsuario('No encontramos ese pedido');
       await aplicarEstadoPago(id, 'pagado', pedido.pago_id);
       return (await pool.query('SELECT * FROM pedidos WHERE id = $1', [id])).rows[0];
+    },
+
+    registrarPresencia: async (_, __, ctx) => {
+      const usuario = requiereLogin(ctx);
+      if (usuario.rol !== 'cliente') throw errorProhibido();
+      const id = String(usuario.id);
+      const ahora = Date.now();
+      const ultimaActividad = usuariosEnLinea.get(id);
+      const yaEstabaEnLinea = ultimaActividad != null && ahora - ultimaActividad <= PRESENCIA_TIMEOUT_MS;
+      usuariosEnLinea.set(id, ahora);
+      if (!yaEstabaEnLinea) {
+        await pubsub.publish(PRESENCIA_USUARIO_ACTUALIZADA, {
+          usuarioPresenciaActualizada: { usuarioId: id, online: true },
+        });
+      }
+      return true;
     },
 
     crearProducto: async (_, args, ctx) => {
@@ -747,6 +813,11 @@ const resolvers = {
         [n, activo]
       );
       if (res.rowCount === 0) throw errorDeUsuario('No encontramos a ese cliente');
+      if (!activo && usuariosEnLinea.delete(String(n))) {
+        await pubsub.publish(PRESENCIA_USUARIO_ACTUALIZADA, {
+          usuarioPresenciaActualizada: { usuarioId: String(n), online: false },
+        });
+      }
       return { ...res.rows[0], pedidos: 0, total_comprado: 0 };
     },
 
@@ -758,14 +829,33 @@ const resolvers = {
       // Sus pedidos se conservan en el historial (usuario_id queda en NULL).
       const res = await pool.query("DELETE FROM usuarios WHERE id = $1 AND rol = 'cliente'", [n]);
       if (res.rowCount === 0) throw errorDeUsuario('No encontramos a ese cliente');
+      if (usuariosEnLinea.delete(String(n))) { // si estaba online, avisamos que ya no lo está
+        await pubsub.publish(PRESENCIA_USUARIO_ACTUALIZADA, {
+          usuarioPresenciaActualizada: { usuarioId: String(n), online: false },
+        });
+      }
       return `Cliente ${n} eliminado`;
+    },
+  },
+  Subscription: { // para la suscripción
+    pedidoPagado: {
+      subscribe: (_, __, ctx) => { // solo los admins pueden suscribirse a los avisos de pedidos pagados
+        requiereAdmin(ctx);
+        return pubsub.asyncIterableIterator([PEDIDO_PAGADO]);
+      },
+    },
+    usuarioPresenciaActualizada: {
+      subscribe: (_, __, ctx) => {
+        requiereAdmin(ctx);
+        return pubsub.asyncIterableIterator([PRESENCIA_USUARIO_ACTUALIZADA]);
+      },
     },
   },
 };
 
+const schema = makeExecutableSchema({ typeDefs: TypeDefs, resolvers });
 const server = new ApolloServer({
-  typeDefs: TypeDefs,
-  resolvers,
+  schema,
   // No exponer rutas internas ni stack traces a los clientes.
   includeStacktraceInErrorResponses: false,
 });
@@ -813,17 +903,22 @@ app.use(
   expressMiddleware(server, {
     // Se ejecuta en cada petición: lee el JWT y carga el usuario desde la base de datos.
     // Una cuenta suspendida deja de funcionar aunque su token siga vigente.
-    context: async ({ req }) => {
-      const id = idDesdeRequest(req);
-      if (!id) return { usuario: null };
-      const res = await pool.query(`SELECT ${USUARIO_PUBLICO} FROM usuarios WHERE id = $1 AND activo`, [id]);
-      return { usuario: res.rows[0] ?? null };
-    },
+    context: async ({ req }) => ({ usuario: await usuarioDesdeAutorizacion(req.headers.authorization) }),
   })
 );
 
 const port = Number(process.env.PORT) || 4000;
 const httpServer = http.createServer(app);
+const wsServer = new WebSocketServer({ server: httpServer, path: '/subscriptions' });
+useServer(
+  {
+    schema,
+    context: async ({ connectionParams }) => ({
+      usuario: await usuarioDesdeAutorizacion(connectionParams?.authorization),// lee el JWT y carga el usuario desde la base de datos
+    }),
+  },
+  wsServer
+);
 await new Promise((resolve) => httpServer.listen({ port }, resolve));
 console.log(`Servidor listo en http://0.0.0.0:${port}/`);
 console.log(
@@ -831,6 +926,17 @@ console.log(
     ? '🧪 Pagos en modo SIMULADO (no se llama a Mercado Pago). Cambia MP_MODO=real cuando termines la integración.'
     : '💳 Pagos en modo REAL con Mercado Pago.'
 );
+
+setInterval(() => {
+  const ahora = Date.now();
+  for (const [usuarioId, ultimaActividad] of usuariosEnLinea) {
+    if (ahora - ultimaActividad <= PRESENCIA_TIMEOUT_MS) continue;
+    usuariosEnLinea.delete(usuarioId);
+    void pubsub.publish(PRESENCIA_USUARIO_ACTUALIZADA, {
+      usuarioPresenciaActualizada: { usuarioId, online: false },
+    }).catch((error) => console.error('No se pudo publicar que el cliente quedó offline:', error));
+  }
+}, 5_000).unref();
 
 // Mantenimiento periódico: primero se consulta a Mercado Pago por los pagos pendientes (por si se perdió un
 // aviso del webhook) y después se liberan las piezas de los pedidos vencidos. Al arrancar y cada 5 minutos.

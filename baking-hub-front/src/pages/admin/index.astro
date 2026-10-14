@@ -2,6 +2,7 @@
 // Resumen del panel. La ruta /admin está protegida en src/middleware.ts (solo rol admin).
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Alert from '../../components/Alert.astro';
+import AdminLiveUpdates from '../../components/AdminLiveUpdates';
 import { graphql, ApiError } from '../../lib/graphql';
 import { ADMIN_RESUMEN } from '../../lib/queries';
 import { precio } from '../../lib/format';
@@ -19,6 +20,7 @@ try {
 <AdminLayout titulo="Resumen" seccion="resumen">
   <h2 class="admin-titulo">Resumen de la tienda</h2>
   <p class="admin-subtitulo">Hola, {Astro.locals.usuario?.nombre}. Esto es lo más importante de hoy.</p>
+  <AdminLiveUpdates client:load />
 
   {error && <Alert>{error}</Alert>}
 

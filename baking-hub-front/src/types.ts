@@ -69,6 +69,7 @@ export interface UsuarioAdmin {
   creado: string;
   pedidos: number;
   totalComprado: number;
+  online: boolean;
 }
 
 export interface ResumenAdmin {

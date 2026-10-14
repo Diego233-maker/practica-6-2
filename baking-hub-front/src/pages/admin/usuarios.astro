@@ -2,6 +2,7 @@
 // Gestión de clientes: buscar, editar, suspender/reactivar y eliminar. Ruta protegida (solo admin).
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import Alert from '../../components/Alert.astro';
+import AdminPresenceUpdates from '../../components/AdminPresenceUpdates';
 import { graphql } from '../../lib/graphql';
 import { ACTUALIZAR_USUARIO, ADMIN_USUARIOS, CAMBIAR_ESTADO_USUARIO, ELIMINAR_USUARIO } from '../../lib/queries';
 import { ErrorFormulario, mensajeError, texto } from '../../lib/admin';
@@ -58,6 +59,7 @@ const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { dateS
 <AdminLayout titulo="Clientes" seccion="usuarios">
   <h2 class="admin-titulo">Clientes</h2>
   <p class="admin-subtitulo">Consulta las cuentas de clientes, corrige sus datos o suspende el acceso.</p>
+  <AdminPresenceUpdates client:load />
 
   {aviso && <p class="mensaje-exito" role="status">{aviso}</p>}
   {error && <Alert>{error}</Alert>}
@@ -85,6 +87,7 @@ const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { dateS
               <th class="num">Pedidos</th>
               <th class="num">Total pagado</th>
               <th>Estado</th>
+              <th>Online</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -101,6 +104,11 @@ const fecha = (iso: string) => new Date(iso).toLocaleDateString('es-MX', { dateS
                 <td class="num">{precio(u.totalComprado)}</td>
                 <td>
                   <span class={`badge ${u.activo ? 'badge-ok' : 'badge-error'}`}>{u.activo ? 'Activo' : 'Suspendido'}</span>
+                </td>
+                <td>
+                  <span class:list={['presencia-usuario', u.online ? 'en-linea' : 'fuera-linea']}>
+                    {u.online ? 'En línea' : 'Desconectado'}
+                  </span>
                 </td>
                 <td>
                   <div class="acciones">

@@ -123,6 +123,10 @@ a.stat:hover { border-color: var(--honey); box-shadow: var(--shadow-soft); }
 .tabla-admin td { padding: 0.8rem 1rem; border-top: 1px solid var(--line); vertical-align: top; }
 .tabla-admin td small { color: var(--espresso-soft); }
 .tabla-admin .num { text-align: right; white-space: nowrap; }
+.presencia-usuario { display: inline-flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+.presencia-usuario::before { content: ''; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--jam); }
+.presencia-usuario.en-linea::before { background: var(--success-text); }
+.presencia-usuario.fuera-linea { color: var(--espresso-soft); }
 .tabla-admin .acciones { display: flex; flex-direction: column; gap: 0.5rem; min-width: 190px; }
 .tabla-admin .acciones form { margin: 0; }
 .tabla-admin .acciones .fila { display: flex; gap: 0.5rem; flex-wrap: wrap; }
